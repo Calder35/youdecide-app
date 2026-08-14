@@ -1,0 +1,42 @@
+# --- Node / JS tooling ---
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+.npm/
+.eslintcache
+coverage/
+dist/
+build/
+
+# --- Env / secrets ---
+.env
+.env.*
+!.env.example
+
+# --- React Native / Expo (if chosen) ---
+.expo/
+.expo-shared/
+*.jsbundle
+
+# --- iOS / Xcode (if native iOS chosen) ---
+ios/Pods/
+ios/build/
+*.xcworkspace/xcuserdata/
+*.xcuserstate
+DerivedData/
+
+# --- Android / Gradle (if native Android chosen) ---
+android/.gradle/
+android/build/
+android/app/build/
+*.keystore
+!debug.keystore
+local.properties
+
+# --- OS / editor ---
+.DS_Store
+.idea/
+.vscode/
+*.log

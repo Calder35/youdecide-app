@@ -1,0 +1,24 @@
+# CI STUB — a starting point the App Developer can (and should) replace once the
+# stack is chosen (see STACK_DECISION.md). There is no app framework yet, so this
+# only sanity-checks that the repo's docs are present. Swap in a real
+# build/lint/test pipeline for the chosen framework (React Native or native).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  scaffold-check:
+    name: scaffold check (starter)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify the foundation docs exist
+        run: |
+          set -e
+          for f in README.md ARCHITECTURE.md STACK_DECISION.md .gitignore; do
+            test -f "$f" || { echo "missing $f"; exit 1; }
+          done
+          echo "scaffold OK — replace this job once the stack is chosen."
