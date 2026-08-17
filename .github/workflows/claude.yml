@@ -1,0 +1,86 @@
+# Claude Code — official Anthropic GitHub Action (anthropics/claude-code-action).
+#
+# NO-APP CONFIG: GitHub operations (branch, PR, comment) use the built-in Actions
+# token (secrets.GITHUB_TOKEN) with write permissions; Anthropic auth uses the
+# ANTHROPIC_API_KEY repo secret. Supported per the action's docs (docs/faq.md).
+#
+# WHY THE PROMPT IS BUILT FROM THE EVENT: the `prompt` input IS Claude's task
+# (docs/usage.md: "Instructions for Claude"). An earlier version passed only the
+# branch/PR rule as the prompt, so Claude had NO task — runs went green but
+# opened no PR and left no comment. This workflow fires on EVERY new issue (not
+# just @claude ones), so we can't rely on the action's tag-mode trigger phrase;
+# instead we feed the triggering issue title + body (or the @claude comment body)
+# straight into the prompt as the work to implement. Interpolating event fields
+# into `prompt` is the documented pattern (see the v0->v1 migration guide).
+#
+# KNOWN LIMITATION of GITHUB_TOKEN: the github-actions user can't trigger further
+# workflows, so CI won't auto-run on Claude's PR and it comments as
+# github-actions[bot]. Swap in a PAT later if cascading CI is wanted.
+#
+# PREREQUISITE (one-time): set the repo secret ANTHROPIC_API_KEY. GITHUB_TOKEN is
+# provided automatically.
+#
+# BEHAVIOR: Claude does all work on a NEW branch and opens a pull request for
+# review — it never commits or pushes directly to the default branch (main).
+name: Claude Code
+
+on:
+  # A newly filed issue kicks Claude off...
+  issues:
+    types: [opened]
+  # ...and any issue OR pull-request comment that @-mentions Claude.
+  # (GitHub delivers PR comments as issue_comment events too.)
+  issue_comment:
+    types: [created]
+
+jobs:
+  claude:
+    # Run on every new issue, and on comments that mention @claude.
+    if: >
+      github.event_name == 'issues' ||
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write         # create a working BRANCH and push commits to it
+      pull-requests: write    # open the PR with Claude's work
+      issues: write           # comment back on the issue / PR
+      id-token: write         # fetch the GitHub OIDC token
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Run Claude Code
+        id: claude
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # No-App auth: use the built-in Actions token for GitHub operations.
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          # TOOL ALLOW-LIST — the fix for Issue #3 (permission_denials_count=10,
+          # only `main`, no PR/comment). With an explicit `prompt` the action runs
+          # non-interactively, so any write tool that isn't allow-listed is DENIED
+          # (there is no human to approve it). Grant the tools needed to persist
+          # work: file edits, plus full Bash so git (branch/commit/push) and gh
+          # (open the PR, comment on the issue) actually run. `--allowedTools` is
+          # ADDITIVE to the action's defaults (docs/configuration.md). Commits use
+          # local git via Bash (default: no commit signing), so Bash is required.
+          # This keeps the no-App GITHUB_TOKEN setup — no GitHub App involved.
+          claude_args: |
+            --allowedTools "Edit,MultiEdit,Write,Read,Glob,Grep,Bash"
+          # The TASK is the triggering issue title + body (and the @claude comment
+          # body, if any) fed straight into the prompt so Claude always has a
+          # concrete request to implement. On an issue event the comment field is
+          # empty; on a comment event both the issue body and the comment appear.
+          prompt: |
+            You are running in the Calder35/youdecide-ai-backend repository via a GitHub Actions workflow.
+
+            Implement the following request, which comes from a GitHub issue or an @claude comment:
+
+            Issue title: ${{ github.event.issue.title }}
+            Request:
+            ${{ github.event.issue.body }}
+            ${{ github.event.comment.body }}
+
+            Do the work needed to satisfy that request. When you make ANY code change: create a NEW branch, commit your work there, and open a pull request against the default branch (main). NEVER commit or push directly to main. If the request truly can't be done as a pull request, explain why in a comment on the issue instead.
