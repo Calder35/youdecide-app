@@ -16,6 +16,9 @@ const palette = {
   ink900: '#0F1720',
   ink700: '#2B3948',
   ink500: '#5A6B7C',
+  // The lightest ink that still clears 3:1 — the WCAG floor for a control
+  // boundary. Input and control borders use it; card hairlines do not need it.
+  ink350: '#7C8B9B',
   ink300: '#93A2B1',
   ink100: '#D8E0E8',
   ink050: '#EEF2F6',
@@ -45,12 +48,22 @@ export const color = {
   background: palette.ink050,
   surface: palette.white,
   surfaceMuted: palette.ink050,
+  /** Hairlines between rows and around cards — decorative, not a boundary. */
   border: palette.ink100,
+  /** The edge of an input, checkbox, or chip. Must stay >= 3:1 (WCAG 1.4.11). */
+  controlBorder: palette.ink350,
 
   // Text
   textPrimary: palette.ink900,
   textSecondary: palette.ink500,
   textInverse: palette.white,
+  /** Placeholder text is text: it is held to 4.5:1 like any other. */
+  textPlaceholder: palette.ink500,
+  /**
+   * Disabled controls only. WCAG exempts disabled elements from contrast, and
+   * this is the one token allowed to fall below it — never use it for text a
+   * person is meant to read.
+   */
   textDisabled: palette.ink300,
 
   // Primary action

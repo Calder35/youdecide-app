@@ -1,27 +1,145 @@
+import { useEffect } from 'react';
+import { StyleSheet, View } from 'react-native';
+
+import { AppText } from '../components/AppText';
+import { ApiStatusNote } from '../components/ApiStatusNote';
 import { Button } from '../components/Button';
-import { PlaceholderNote } from '../components/PlaceholderNote';
+import { Card } from '../components/Card';
+import { DraftNotice } from '../components/DraftNotice';
+import { ErrorBanner } from '../components/Errors';
+import { Figure } from '../components/Figure';
 import { ScreenScaffold } from '../components/ScreenScaffold';
+import { MOCK_DOCUMENTS, MOCK_PROPERTY_FACTS } from '../data/mock';
+import type { DocumentStatus } from '../data/types';
 import { ROUTES } from '../navigation/routes';
 import type { RootStackScreenProps } from '../navigation/types';
+import { useSellerSession } from '../state/SellerSession';
+import { theme } from '../theme';
+
+const STATUS_LABEL: Record<DocumentStatus, string> = {
+  needed: 'Needed',
+  uploaded: 'Received',
+  notApplicable: 'Only if you have it',
+};
 
 export function PropertyWorkspaceScreen({ navigation }: RootStackScreenProps<'PropertyWorkspace'>) {
+  const { propertyAddress, state, openWorkspace, isConnected } = useSellerSession();
+  const { pending, error, journeyId } = state.remote;
+
+  // Opening the workspace is what the seller came here to do, so it happens on
+  // arrival rather than behind another button. `openWorkspace` is a no-op when
+  // offline or already opened, so this is safe to fire on every mount.
+  useEffect(() => {
+    void openWorkspace();
+  }, [openWorkspace]);
+
   return (
     <ScreenScaffold
       route={ROUTES.PropertyWorkspace}
       title="Your property workspace"
-      intro="Everything about this home in one place: the facts we pulled, the ones you corrected, photos, and documents. Each figure will show its source and how confident we are in it."
+      intro="Everything we know about this home, and where each piece came from. Anything wrong here is worth fixing now — the whole plan is built on it."
       actions={
         <Button
           label="Continue"
           testID="cta-continue"
+          accessibilityHint="Goes on to your listing plan."
           onPress={() => navigation.navigate(ROUTES.AiPlan)}
         />
       }
     >
-      <PlaceholderNote chunk={2}>
-        Property facts, documents, and photo slots — mock data in chunk 2, backed by the workspace
-        endpoint in chunk 4. Chunk 3 adds the source-and-confidence display each fact carries.
-      </PlaceholderNote>
+      <ApiStatusNote />
+
+      {error !== null && (
+        <ErrorBanner
+          title="We could not open your workspace"
+          message={error.message}
+          testID="workspace-error"
+          action={
+            error.retryable ? (
+              <Button
+                label="Try again"
+                variant="secondary"
+                testID="cta-retry-workspace"
+                onPress={openWorkspace}
+              />
+            ) : undefined
+          }
+        />
+      )}
+
+      <Card
+        title={propertyAddress}
+        subtitle={
+          isConnected && journeyId !== null
+            ? 'Workspace open on the test API. Every change from here is recorded.'
+            : pending === 'workspace'
+              ? 'Opening your workspace…'
+              : 'The property this workspace is about.'
+        }
+        testID="workspace-address"
+      />
+
+      <Card
+        title="What we know"
+        subtitle="Every figure shows its source and how confident we are in it. Tap a confidence level to see what it means."
+      >
+        {MOCK_PROPERTY_FACTS.map((fact) => (
+          <Figure
+            key={fact.id}
+            label={fact.label}
+            value={fact.display}
+            correctedBySeller={fact.correctedBySeller}
+            testID={`fact-${fact.id}`}
+          />
+        ))}
+        <AppText role="caption" tone="secondary">
+          Something off? Tell a licensed agent — corrections you make are marked as yours, and they
+          outrank the record.
+        </AppText>
+      </Card>
+
+      <Card title="Documents" subtitle="What we need, and why we need it.">
+        {MOCK_DOCUMENTS.map((document) => (
+          <View key={document.id} style={styles.document}>
+            <View style={styles.documentHeader}>
+              <AppText role="bodyStrong" style={styles.documentLabel}>
+                {document.label}
+              </AppText>
+              <AppText
+                role="micro"
+                tone={document.status === 'needed' ? 'caution' : 'secondary'}
+                uppercase
+              >
+                {STATUS_LABEL[document.status]}
+              </AppText>
+            </View>
+            <AppText role="caption" tone="secondary">
+              {document.why}
+            </AppText>
+          </View>
+        ))}
+        <DraftNotice />
+        <AppText role="caption" tone="secondary">
+          Uploads land in chunk 4. In this build the list is here so you can see what a listing
+          actually asks of you before you commit.
+        </AppText>
+      </Card>
     </ScreenScaffold>
   );
 }
+
+const styles = StyleSheet.create({
+  document: {
+    paddingVertical: theme.space.sm,
+    gap: theme.space.xxs,
+  },
+  documentHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+    gap: theme.space.md,
+  },
+  documentLabel: {
+    flex: 1,
+  },
+});
