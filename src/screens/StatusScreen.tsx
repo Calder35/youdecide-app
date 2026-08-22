@@ -1,9 +1,14 @@
+import { useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { AppText, type TextTone } from '../components/AppText';
+import { ApiStatusNote } from '../components/ApiStatusNote';
+import { Button } from '../components/Button';
 import { Card } from '../components/Card';
+import { ErrorBanner } from '../components/Errors';
 import { FooterLinks } from '../components/FooterLinks';
 import { ScreenScaffold } from '../components/ScreenScaffold';
+import { describeAuditAction } from '../api/sellerIntake';
 import { MOCK_TIMELINE } from '../data/mock';
 import type { TimelineEntry } from '../data/types';
 import { ROUTES } from '../navigation/routes';
@@ -26,9 +31,17 @@ const STATE_TONE: Record<TimelineEntry['state'], TextTone> = {
 };
 
 export function StatusScreen(_props: RootStackScreenProps<'Status'>) {
-  const { state, propertyAddress } = useSellerSession();
+  const { state, propertyAddress, refreshAudit, isConnected } = useSellerSession();
   const requests = state.humanRequests;
   const latest = requests[requests.length - 1];
+  const { auditTrail, error, pending } = state.remote;
+
+  // The audit trail is the backend's own record of what happened. Reading it
+  // here is deliberate: the seller sees what the system wrote about them, not
+  // a summary we composed.
+  useEffect(() => {
+    void refreshAudit();
+  }, [refreshAudit]);
 
   return (
     <ScreenScaffold
@@ -53,6 +66,13 @@ export function StatusScreen(_props: RootStackScreenProps<'Status'>) {
               {requests.length} requests sent in this session.
             </AppText>
           )}
+          <AppText role="micro" tone={latest.synced ? 'success' : 'secondary'} uppercase testID="request-sync-state">
+            {latest.synced
+              ? 'Delivered to the test API'
+              : isConnected
+                ? 'Recorded on this device — not delivered'
+                : 'Recorded on this device'}
+          </AppText>
         </Card>
       ) : (
         <Card title="No request open" testID="status-no-request">
@@ -82,6 +102,49 @@ export function StatusScreen(_props: RootStackScreenProps<'Status'>) {
         ))}
       </Card>
 
+      {error !== null && (
+        <ErrorBanner
+          title="We could not read your record"
+          message={error.message}
+          testID="status-error"
+          action={
+            error.retryable ? (
+              <Button
+                label="Try again"
+                variant="secondary"
+                testID="cta-retry-audit"
+                onPress={refreshAudit}
+              />
+            ) : undefined
+          }
+        />
+      )}
+
+      {isConnected && (
+        <Card
+          title="What the system recorded"
+          subtitle="The backend's own audit trail for your workspace. Append-only — nothing here can be edited or removed, including by us."
+          testID="audit-trail"
+        >
+          {auditTrail.length === 0 ? (
+            <AppText role="caption" tone="secondary">
+              {pending === 'audit' ? 'Reading your record…' : 'Nothing recorded yet.'}
+            </AppText>
+          ) : (
+            auditTrail.map((entry) => (
+              <View key={entry.seq} style={styles.auditRow} testID={`audit-${entry.seq}`}>
+                <AppText role="micro" tone="secondary" style={styles.auditSeq}>
+                  {entry.seq}
+                </AppText>
+                <AppText style={styles.auditLabel}>{describeAuditAction(entry.action)}</AppText>
+              </View>
+            ))
+          )}
+        </Card>
+      )}
+
+      <ApiStatusNote />
+
       <FooterLinks />
     </ScreenScaffold>
   );
@@ -109,5 +172,18 @@ const styles = StyleSheet.create({
   entryCopy: {
     flex: 1,
     gap: theme.space.xxs,
+  },
+  auditRow: {
+    flexDirection: 'row',
+    gap: theme.space.md,
+    paddingVertical: theme.space.xs,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.color.border,
+  },
+  auditSeq: {
+    minWidth: 20,
+  },
+  auditLabel: {
+    flex: 1,
   },
 });
