@@ -2,6 +2,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import type { ApiClient } from '../api/client';
 import { RootNavigator } from '../navigation/RootNavigator';
 import { SellerSessionProvider } from '../state/SellerSession';
 
@@ -16,10 +17,14 @@ const initialMetrics = {
   insets: { top: 47, left: 0, right: 0, bottom: 34 },
 };
 
-export async function renderApp() {
+/**
+ * `client` is optional: with none, the app runs in its default OFFLINE mode and
+ * touches no network — which is what most tests want, and what CI must have.
+ */
+export async function renderApp(client?: ApiClient) {
   await render(
     <SafeAreaProvider initialMetrics={initialMetrics}>
-      <SellerSessionProvider>
+      <SellerSessionProvider client={client}>
         <NavigationContainer>
           <RootNavigator />
         </NavigationContainer>

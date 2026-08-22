@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { AppText } from '../components/AppText';
+import { ApiStatusNote } from '../components/ApiStatusNote';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { ErrorBanner } from '../components/Errors';
@@ -24,6 +25,7 @@ import { theme } from '../theme';
  */
 export function GetHumanScreen({ navigation, route }: RootStackScreenProps<'GetHuman'>) {
   const { state, requestHuman, propertyAddress } = useSellerSession();
+  const { pending } = state.remote;
   const [note, setNote] = useState('');
 
   const askedFrom = route.params?.from ?? 'Opened directly';
@@ -36,8 +38,10 @@ export function GetHumanScreen({ navigation, route }: RootStackScreenProps<'GetH
   const lines = summarizeHandoff(payload);
   const missing = readinessForHuman(state.account);
 
-  const send = () => {
-    requestHuman(askedFrom, note);
+  const send = async () => {
+    // The local record is written first and cannot fail. Whether the test API
+    // is reachable changes what STATUS says, never whether the request exists.
+    await requestHuman(askedFrom, note);
     navigation.navigate(ROUTES.Status);
   };
 
@@ -52,7 +56,8 @@ export function GetHumanScreen({ navigation, route }: RootStackScreenProps<'GetH
             label="Request a human"
             variant="human"
             testID="cta-request-human"
-            accessibilityHint="In this preview build nothing is sent."
+            busy={pending === 'human'}
+            accessibilityHint="Sends everything listed above to a licensed agent."
             onPress={send}
           />
           <Button
@@ -122,12 +127,7 @@ export function GetHumanScreen({ navigation, route }: RootStackScreenProps<'GetH
         />
       </Card>
 
-      <Card tone="muted">
-        <AppText role="caption" tone="secondary">
-          Preview build — nothing is transmitted and no agent is contacted. Chunk 4 sends this exact
-          payload to the backend test endpoint and writes the matching audit event.
-        </AppText>
-      </Card>
+      <ApiStatusNote />
     </ScreenScaffold>
   );
 }

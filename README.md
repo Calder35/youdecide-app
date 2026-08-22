@@ -62,6 +62,7 @@ App.tsx                  navigation container + providers
 src/
   navigation/            route names, the flow order, the stack, param types
   screens/               one file per screen in the flow
+  api/                   the backend test-API client — config guard, errors, intake calls
   components/            the design system — see src/components/README.md
   content/               DRAFT Nevada copy, pending licensed review
   data/                  fee math, consents, validation, the handoff payload, mock records
@@ -81,6 +82,34 @@ Three files carry most of the product’s weight:
   **DRAFT — pending licensed NV review**. None of it has been read by a licensed Nevada agent.
   Every screen rendering it also renders `DraftNotice`, and tests enforce that pairing.
 
+## Talking to the backend
+
+**Offline by default.** With no `EXPO_PUBLIC_API_BASE_URL` set, the app runs entirely on sample
+data and sends nothing. That is the default build, and it is not an error state — every screen says
+which mode it is in.
+
+To wire it to a local backend, copy `.env.example` to `.env` and run
+[`Calder35/youdecide-ai-backend`](https://github.com/Calder35/youdecide-ai-backend):
+
+```bash
+uvicorn app.main:app --reload --port 8000
+```
+
+> ⚠️ The seller-intake routes this app calls are on the backend's **`feat/01-data-model`** branch,
+> not on its `main`. Backend PRs #10–#12 were merged into that branch rather than into `main`.
+
+**The app has no production mode.** `src/api/config.ts` refuses any host that is not obviously a
+test one — loopback, a private LAN address, a `.local` name, or a `test.`/`dev.`/`staging.`
+hostname. A misconfigured build fails loudly at startup instead of quietly writing somewhere real.
+
+What is wired: create seller → record each consent → open the property workspace → request a
+licensed human → read the backend's audit trail back. Two rules the code follows:
+
+- **A failed call never blocks the seller.** The local record is written first and always; the
+  network call is best-effort on top of it. A backend outage cannot stop someone asking for a human.
+- **We never navigate away from an error.** A failure keeps the seller on the screen where the
+  explanation is, with a retry and a "Continue anyway".
+
 ## Accessibility
 
 Held by tests, not by memory: WCAG AA contrast on every text/background pair the app renders
@@ -95,8 +124,8 @@ Each chunk is one reviewable PR, stacked.
 | ----- | ---------- | ------ |
 | 1 | Scaffold — Expo + TS skeleton, navigation shell, design tokens, CI | merged |
 | 2 | Interactive prototype — every screen wired with mock data, fully navigable | merged |
-| 3 | Design system + trust UI — consent/disclosure, source & confidence display, a11y | **this PR** |
-| 4 | Backend test API — account/consent → workspace → request human | planned |
+| 3 | Design system + trust UI — consent/disclosure, source & confidence display, a11y | merged |
+| 4 | Backend test API — account/consent → workspace → request human | **this PR** |
 
 **Milestone acceptance:** five users can complete the scripted seller intake and request a human,
 and the 1% explanation reads clearly.

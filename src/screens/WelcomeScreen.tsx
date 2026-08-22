@@ -1,6 +1,7 @@
 import { StyleSheet, View } from 'react-native';
 
 import { AppText } from '../components/AppText';
+import { ApiStatusNote } from '../components/ApiStatusNote';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { FooterLinks } from '../components/FooterLinks';
@@ -71,10 +72,12 @@ export function WelcomeScreen({ navigation }: RootStackScreenProps<'Welcome'>) {
         </Card>
       ))}
 
+      <ApiStatusNote />
+
       <Card tone="muted">
         <AppText role="caption" tone="secondary">
-          Preview build. Nothing you enter here is sent anywhere, and no listing can be published
-          from this app.
+          Preview build. No listing can be published from this app, and no production system is
+          reachable from it.
         </AppText>
       </Card>
 

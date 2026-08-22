@@ -1,9 +1,12 @@
+import { useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { AppText } from '../components/AppText';
+import { ApiStatusNote } from '../components/ApiStatusNote';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { DraftNotice } from '../components/DraftNotice';
+import { ErrorBanner } from '../components/Errors';
 import { Figure } from '../components/Figure';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { MOCK_DOCUMENTS, MOCK_PROPERTY_FACTS } from '../data/mock';
@@ -20,7 +23,15 @@ const STATUS_LABEL: Record<DocumentStatus, string> = {
 };
 
 export function PropertyWorkspaceScreen({ navigation }: RootStackScreenProps<'PropertyWorkspace'>) {
-  const { propertyAddress } = useSellerSession();
+  const { propertyAddress, state, openWorkspace, isConnected } = useSellerSession();
+  const { pending, error, journeyId } = state.remote;
+
+  // Opening the workspace is what the seller came here to do, so it happens on
+  // arrival rather than behind another button. `openWorkspace` is a no-op when
+  // offline or already opened, so this is safe to fire on every mount.
+  useEffect(() => {
+    void openWorkspace();
+  }, [openWorkspace]);
 
   return (
     <ScreenScaffold
@@ -36,9 +47,35 @@ export function PropertyWorkspaceScreen({ navigation }: RootStackScreenProps<'Pr
         />
       }
     >
+      <ApiStatusNote />
+
+      {error !== null && (
+        <ErrorBanner
+          title="We could not open your workspace"
+          message={error.message}
+          testID="workspace-error"
+          action={
+            error.retryable ? (
+              <Button
+                label="Try again"
+                variant="secondary"
+                testID="cta-retry-workspace"
+                onPress={openWorkspace}
+              />
+            ) : undefined
+          }
+        />
+      )}
+
       <Card
         title={propertyAddress}
-        subtitle="The property this workspace is about."
+        subtitle={
+          isConnected && journeyId !== null
+            ? 'Workspace open on the test API. Every change from here is recorded.'
+            : pending === 'workspace'
+              ? 'Opening your workspace…'
+              : 'The property this workspace is about.'
+        }
         testID="workspace-address"
       />
 

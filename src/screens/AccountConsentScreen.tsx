@@ -1,7 +1,9 @@
 import { AppText } from '../components/AppText';
+import { ApiStatusNote } from '../components/ApiStatusNote';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { ConsentItem } from '../components/ConsentItem';
+import { ErrorBanner } from '../components/Errors';
 import { Field } from '../components/Field';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { CONSENTS, missingRequiredConsents } from '../data/consents';
@@ -11,8 +13,25 @@ import type { RootStackScreenProps } from '../navigation/types';
 import { useSellerSession } from '../state/SellerSession';
 
 export function AccountConsentScreen({ navigation }: RootStackScreenProps<'AccountConsent'>) {
-  const { state, setAccountField, toggleConsent, canProceedPastConsent } = useSellerSession();
+  const { state, setAccountField, toggleConsent, canProceedPastConsent, submitAccount } =
+    useSellerSession();
   const missing = missingRequiredConsents(state.consents);
+  const { pending, error, sellerId } = state.remote;
+
+  const goOn = () => navigation.navigate(ROUTES.SellerDiscovery);
+
+  /**
+   * Continue creates the seller and records each consent on the test API, then
+   * moves on.
+   *
+   * On failure we STAY on this screen: navigating away would leave the error
+   * behind on a screen the seller can no longer see. They are not stuck —
+   * "Continue anyway" is right there, because the app works offline by design
+   * and a backend problem is not the seller's problem.
+   */
+  const onContinue = async () => {
+    if (await submitAccount()) goOn();
+  };
 
   return (
     <ScreenScaffold
@@ -23,6 +42,7 @@ export function AccountConsentScreen({ navigation }: RootStackScreenProps<'Accou
         <Button
           label="Continue"
           testID="cta-continue"
+          busy={pending === 'account'}
           disabled={!canProceedPastConsent}
           disabledReason={
             canProceedPastConsent
@@ -30,10 +50,48 @@ export function AccountConsentScreen({ navigation }: RootStackScreenProps<'Accou
               : `Still needed: ${missing.map((consent) => consent.title).join('; ')}`
           }
           accessibilityHint="Goes on to questions about your sale."
-          onPress={() => navigation.navigate(ROUTES.SellerDiscovery)}
+          onPress={onContinue}
         />
       }
     >
+      <ApiStatusNote />
+
+      {error !== null && (
+        <ErrorBanner
+          title="We could not save your account"
+          message={`${error.message} Your answers are safe on this device either way.`}
+          testID="account-error"
+          action={
+            <>
+              {error.retryable && (
+                <Button
+                  label="Try again"
+                  variant="secondary"
+                  testID="cta-retry-account"
+                  onPress={onContinue}
+                />
+              )}
+              <Button
+                label="Continue anyway"
+                variant="secondary"
+                testID="cta-continue-anyway"
+                accessibilityHint="Carries on with sample data. Nothing you entered is lost."
+                onPress={goOn}
+              />
+            </>
+          }
+        />
+      )}
+
+      {sellerId !== null && (
+        <Card tone="muted" testID="account-saved">
+          <AppText role="caption" tone="secondary">
+            Saved to the test API. Each agreement you gave was recorded as its own event, with the
+            wording you saw.
+          </AppText>
+        </Card>
+      )}
+
       <Card title="Your details" subtitle="Used to reach you and to prepare your paperwork.">
         <Field
           label="Full name"
