@@ -1,10 +1,11 @@
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 import { ROUTES } from '../navigation/routes';
 import type { RootStackParamList } from '../navigation/types';
 import { theme } from '../theme';
+import { AppText } from './AppText';
 
 /**
  * Privacy and account-deletion entry points.
@@ -25,7 +26,9 @@ export function FooterLinks() {
         onPress={() => navigation.navigate(ROUTES.Privacy)}
         style={styles.link}
       >
-        <Text style={styles.text}>Privacy &amp; your data</Text>
+        <AppText role="caption" tone="action" style={styles.text}>
+          Privacy &amp; your data
+        </AppText>
       </Pressable>
       <Pressable
         accessibilityRole="link"
@@ -34,7 +37,9 @@ export function FooterLinks() {
         onPress={() => navigation.navigate(ROUTES.DeleteAccount)}
         style={styles.link}
       >
-        <Text style={styles.text}>Delete your account</Text>
+        <AppText role="caption" tone="action" style={styles.text}>
+          Delete your account
+        </AppText>
       </Pressable>
     </View>
   );
@@ -52,8 +57,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   text: {
-    ...theme.textStyle.caption,
-    color: theme.color.actionSecondaryText,
     textDecorationLine: 'underline',
   },
 });

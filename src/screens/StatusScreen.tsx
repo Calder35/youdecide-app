@@ -1,5 +1,6 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
+import { AppText, type TextTone } from '../components/AppText';
 import { Card } from '../components/Card';
 import { FooterLinks } from '../components/FooterLinks';
 import { ScreenScaffold } from '../components/ScreenScaffold';
@@ -15,6 +16,13 @@ const STATE_LABEL: Record<TimelineEntry['state'], string> = {
   inProgress: 'In progress',
   waitingOnHuman: 'With a licensed agent',
   upcoming: 'Not started',
+};
+
+const STATE_TONE: Record<TimelineEntry['state'], TextTone> = {
+  done: 'success',
+  inProgress: 'action',
+  waitingOnHuman: 'human',
+  upcoming: 'secondary',
 };
 
 export function StatusScreen(_props: RootStackScreenProps<'Status'>) {
@@ -35,21 +43,23 @@ export function StatusScreen(_props: RootStackScreenProps<'Status'>) {
           subtitle={`Sent from ${latest.from} · typically answered within one business day`}
           testID="status-request"
         >
-          <Text style={styles.body}>
+          <AppText>
             {latest.note.trim().length > 0
               ? `Your note: “${latest.note.trim()}”`
               : 'You did not add a note — the agent still gets your workspace and plan.'}
-          </Text>
+          </AppText>
           {requests.length > 1 && (
-            <Text style={styles.note}>{requests.length} requests sent in this session.</Text>
+            <AppText role="caption" tone="secondary">
+              {requests.length} requests sent in this session.
+            </AppText>
           )}
         </Card>
       ) : (
         <Card title="No request open" testID="status-no-request">
-          <Text style={styles.body}>
+          <AppText>
             You haven&rsquo;t asked for a human yet. The bar at the bottom of every screen does it,
             and it shows what gets shared before anything is sent.
-          </Text>
+          </AppText>
         </Card>
       )}
 
@@ -60,11 +70,13 @@ export function StatusScreen(_props: RootStackScreenProps<'Status'>) {
           <View key={entry.id} style={styles.entry} testID={`timeline-${entry.id}`}>
             <View style={[styles.marker, markerStyle[entry.state]]} accessibilityElementsHidden />
             <View style={styles.entryCopy}>
-              <Text style={styles.entryLabel}>{entry.label}</Text>
-              <Text style={styles.entryDetail}>{entry.detail}</Text>
-              <Text style={[styles.entryState, stateTextStyle[entry.state]]}>
+              <AppText role="bodyStrong">{entry.label}</AppText>
+              <AppText role="caption" tone="secondary">
+                {entry.detail}
+              </AppText>
+              <AppText role="micro" tone={STATE_TONE[entry.state]} uppercase>
                 {STATE_LABEL[entry.state]}
-              </Text>
+              </AppText>
             </View>
           </View>
         ))}
@@ -79,25 +91,10 @@ const markerStyle: Record<TimelineEntry['state'], { backgroundColor: string }> =
   done: { backgroundColor: theme.color.uncertaintyHigh },
   inProgress: { backgroundColor: theme.color.actionPrimary },
   waitingOnHuman: { backgroundColor: theme.color.human },
-  upcoming: { backgroundColor: theme.color.border },
-};
-
-const stateTextStyle: Record<TimelineEntry['state'], { color: string }> = {
-  done: { color: theme.color.uncertaintyHigh },
-  inProgress: { color: theme.color.actionPrimary },
-  waitingOnHuman: { color: theme.color.humanPressed },
-  upcoming: { color: theme.color.textSecondary },
+  upcoming: { backgroundColor: theme.color.controlBorder },
 };
 
 const styles = StyleSheet.create({
-  body: {
-    ...theme.textStyle.body,
-    color: theme.color.textPrimary,
-  },
-  note: {
-    ...theme.textStyle.caption,
-    color: theme.color.textSecondary,
-  },
   entry: {
     flexDirection: 'row',
     gap: theme.space.md,
@@ -112,18 +109,5 @@ const styles = StyleSheet.create({
   entryCopy: {
     flex: 1,
     gap: theme.space.xxs,
-  },
-  entryLabel: {
-    ...theme.textStyle.bodyStrong,
-    color: theme.color.textPrimary,
-  },
-  entryDetail: {
-    ...theme.textStyle.caption,
-    color: theme.color.textSecondary,
-  },
-  entryState: {
-    ...theme.textStyle.micro,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
   },
 });

@@ -1,7 +1,9 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
+import { AppText } from '../components/AppText';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
+import { DraftNotice } from '../components/DraftNotice';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import {
   CONVENTIONAL_LISTING_RATE,
@@ -53,13 +55,17 @@ export function OnePercentScreen({ navigation }: RootStackScreenProps<'OnePercen
             onPress={() => adjust(-PRICE_STEP)}
             style={styles.stepper}
           >
-            <Text style={styles.stepperText}>−</Text>
+            <AppText role="heading" tone="action">
+              −
+            </AppText>
           </Pressable>
           <View style={styles.priceBox}>
-            <Text style={styles.price} testID="modeled-price">
+            <AppText role="display" testID="modeled-price">
               {formatUsd(fees.salePrice)}
-            </Text>
-            <Text style={styles.priceCaption}>Sale price you&rsquo;re modeling</Text>
+            </AppText>
+            <AppText role="caption" tone="secondary">
+              Sale price you&rsquo;re modeling
+            </AppText>
           </View>
           <Pressable
             accessibilityRole="button"
@@ -68,30 +74,30 @@ export function OnePercentScreen({ navigation }: RootStackScreenProps<'OnePercen
             onPress={() => adjust(PRICE_STEP)}
             style={styles.stepper}
           >
-            <Text style={styles.stepperText}>+</Text>
+            <AppText role="heading" tone="action">
+              +
+            </AppText>
           </Pressable>
         </View>
 
         <View style={styles.lineItem}>
-          <Text style={styles.lineLabel}>You Decide listing fee — 1%</Text>
-          <Text style={styles.lineValue} testID="listing-fee">
+          <AppText style={styles.lineLabel}>You Decide listing fee — 1%</AppText>
+          <AppText role="bodyStrong" testID="listing-fee">
             {formatUsd(fees.listingFee)}
-          </Text>
+          </AppText>
         </View>
-        <Text style={styles.lineNote}>
+        <AppText role="caption" tone="secondary">
           This is our entire fee. There is no second listing fee, no transaction fee, no admin fee.
-        </Text>
+        </AppText>
 
         <View style={styles.divider} />
 
-        <Text style={styles.subhead}>
-          Buyer&rsquo;s agent commission — your choice, not ours
-        </Text>
-        <Text style={styles.lineNote}>
+        <AppText role="bodyStrong">Buyer&rsquo;s agent commission — your choice, not ours</AppText>
+        <AppText role="caption" tone="secondary">
           You decide whether to offer one and how much. It is negotiable, and it is separate from
           our 1%.
-        </Text>
-        <View style={styles.rateRow}>
+        </AppText>
+        <View style={styles.rateRow} accessibilityRole="radiogroup">
           {BUYER_AGENT_OPTIONS.map((rate) => {
             const selected = Math.abs(rate - state.buyerAgentRate) < 0.0001;
             return (
@@ -106,33 +112,38 @@ export function OnePercentScreen({ navigation }: RootStackScreenProps<'OnePercen
                 onPress={() => setBuyerAgentRate(rate)}
                 style={[styles.rateChip, selected && styles.rateChipSelected]}
               >
-                <Text style={[styles.rateText, selected && styles.rateTextSelected]}>
+                <AppText
+                  role={selected ? 'bodyStrong' : 'body'}
+                  tone={selected ? 'action' : 'primary'}
+                >
                   {rate === 0 ? 'None' : formatPercent(rate)}
-                </Text>
+                </AppText>
               </Pressable>
             );
           })}
         </View>
         <View style={styles.lineItem}>
-          <Text style={styles.lineLabel}>
+          <AppText style={styles.lineLabel}>
             Buyer&rsquo;s agent — {formatPercent(fees.buyerAgentRate)}
-          </Text>
-          <Text style={styles.lineValue} testID="buyer-agent-fee">
+          </AppText>
+          <AppText role="bodyStrong" testID="buyer-agent-fee">
             {formatUsd(fees.buyerAgentFee)}
-          </Text>
+          </AppText>
         </View>
 
         <View style={styles.divider} />
 
         <View style={styles.lineItem}>
-          <Text style={styles.totalLabel}>What you pay in commission</Text>
-          <Text style={styles.totalValue} testID="total-commission">
+          <AppText role="subheading" style={styles.lineLabel}>
+            What you pay in commission
+          </AppText>
+          <AppText role="subheading" testID="total-commission">
             {formatUsd(fees.totalCommission)}
-          </Text>
+          </AppText>
         </View>
-        <Text style={styles.lineNote}>
+        <AppText role="caption" tone="secondary">
           {formatPercent(fees.effectiveRate)} of your sale price, both sides together.
-        </Text>
+        </AppText>
       </Card>
 
       <Card
@@ -141,32 +152,36 @@ export function OnePercentScreen({ navigation }: RootStackScreenProps<'OnePercen
         tone="muted"
       >
         <View style={styles.lineItem}>
-          <Text style={styles.lineLabel}>
+          <AppText style={styles.lineLabel}>
             Listing side at {formatPercent(CONVENTIONAL_LISTING_RATE)}
-          </Text>
-          <Text style={styles.lineValue}>{formatUsd(fees.conventionalListingFee)}</Text>
+          </AppText>
+          <AppText role="bodyStrong">{formatUsd(fees.conventionalListingFee)}</AppText>
         </View>
         <View style={styles.lineItem}>
-          <Text style={styles.lineLabel}>Listing side with You Decide</Text>
-          <Text style={styles.lineValue}>{formatUsd(fees.listingFee)}</Text>
+          <AppText style={styles.lineLabel}>Listing side with You Decide</AppText>
+          <AppText role="bodyStrong">{formatUsd(fees.listingFee)}</AppText>
         </View>
         <View style={styles.lineItem}>
-          <Text style={styles.totalLabel}>Difference</Text>
-          <Text style={styles.totalValue} testID="savings">
+          <AppText role="subheading" style={styles.lineLabel}>
+            Difference
+          </AppText>
+          <AppText role="subheading" testID="savings">
             {formatUsd(fees.savingsVsConventional)}
-          </Text>
+          </AppText>
         </View>
-        <Text style={styles.lineNote}>
+        <AppText role="caption" tone="secondary">
           A comparison at a common rate, not a claim about what any particular brokerage charges.
           Commission rates are always negotiable.
-        </Text>
+        </AppText>
       </Card>
 
       <Card title="What the 1% includes">
         {INCLUDED.map((item) => (
           <View key={item} style={styles.bulletRow}>
-            <Text style={styles.included}>✓</Text>
-            <Text style={styles.bulletText}>{item}</Text>
+            <AppText role="bodyStrong" tone="success">
+              ✓
+            </AppText>
+            <AppText style={styles.bulletText}>{item}</AppText>
           </View>
         ))}
       </Card>
@@ -175,19 +190,24 @@ export function OnePercentScreen({ navigation }: RootStackScreenProps<'OnePercen
         {EXCLUDED.map((entry) => (
           <View key={entry.item} style={styles.excludedBlock}>
             <View style={styles.bulletRow}>
-              <Text style={styles.excluded}>—</Text>
-              <Text style={styles.bulletText}>{entry.item}</Text>
+              <AppText role="bodyStrong" tone="secondary">
+                —
+              </AppText>
+              <AppText style={styles.bulletText}>{entry.item}</AppText>
             </View>
-            <Text style={styles.excludedNote}>{entry.note}</Text>
+            <AppText role="caption" tone="secondary" style={styles.excludedNote}>
+              {entry.note}
+            </AppText>
           </View>
         ))}
+        <DraftNotice />
       </Card>
 
       <Card tone="human" title="Not sure how this applies to your sale?">
-        <Text style={styles.bulletText}>
+        <AppText>
           A licensed Nevada agent will walk through your actual numbers with you before you commit
           to anything. Tap &ldquo;Get a human&rdquo; below — it is on every screen.
-        </Text>
+        </AppText>
       </Card>
     </ScreenScaffold>
   );
@@ -208,18 +228,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  stepperText: {
-    ...theme.textStyle.heading,
-    color: theme.color.actionPrimary,
-  },
   priceBox: {
     flex: 1,
     alignItems: 'center',
-  },
-  price: theme.textStyle.display,
-  priceCaption: {
-    ...theme.textStyle.caption,
-    color: theme.color.textSecondary,
   },
   lineItem: {
     flexDirection: 'row',
@@ -228,21 +239,7 @@ const styles = StyleSheet.create({
     gap: theme.space.md,
   },
   lineLabel: {
-    ...theme.textStyle.body,
-    color: theme.color.textPrimary,
     flex: 1,
-  },
-  lineValue: {
-    ...theme.textStyle.bodyStrong,
-    color: theme.color.textPrimary,
-  },
-  lineNote: {
-    ...theme.textStyle.caption,
-    color: theme.color.textSecondary,
-  },
-  subhead: {
-    ...theme.textStyle.bodyStrong,
-    color: theme.color.textPrimary,
   },
   divider: {
     height: 1,
@@ -260,50 +257,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.space.lg,
     borderRadius: theme.radius.pill,
     borderWidth: 1,
-    borderColor: theme.color.border,
+    borderColor: theme.color.controlBorder,
   },
   rateChipSelected: {
     borderColor: theme.color.actionPrimary,
     backgroundColor: theme.color.sourceSurface,
   },
-  rateText: {
-    ...theme.textStyle.body,
-    color: theme.color.textPrimary,
-  },
-  rateTextSelected: {
-    ...theme.textStyle.bodyStrong,
-    color: theme.color.actionPrimaryPressed,
-  },
-  totalLabel: {
-    ...theme.textStyle.subheading,
-    color: theme.color.textPrimary,
-    flex: 1,
-  },
-  totalValue: theme.textStyle.subheading,
   bulletRow: {
     flexDirection: 'row',
     gap: theme.space.sm,
   },
   bulletText: {
-    ...theme.textStyle.body,
-    color: theme.color.textPrimary,
     flex: 1,
-  },
-  included: {
-    ...theme.textStyle.bodyStrong,
-    color: theme.color.uncertaintyHigh,
-  },
-  excluded: {
-    ...theme.textStyle.bodyStrong,
-    color: theme.color.textSecondary,
   },
   excludedBlock: {
     gap: theme.space.xxs,
     marginBottom: theme.space.sm,
   },
   excludedNote: {
-    ...theme.textStyle.caption,
-    color: theme.color.textSecondary,
     marginLeft: theme.space.lg,
   },
 });

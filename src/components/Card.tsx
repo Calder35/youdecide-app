@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
-import { StyleSheet, Text, View, type ViewStyle } from 'react-native';
+import { StyleSheet, View, type ViewStyle } from 'react-native';
 
 import { theme } from '../theme';
+import { AppText } from './AppText';
 
 type Props = {
   title?: string;
@@ -17,11 +18,15 @@ export function Card({ title, subtitle, children, tone = 'default', style, testI
   return (
     <View style={[styles.card, tone === 'human' && styles.human, tone === 'muted' && styles.muted, style]} testID={testID}>
       {title !== undefined && (
-        <Text style={styles.title} accessibilityRole="header">
+        <AppText role="subheading" accessibilityRole="header">
           {title}
-        </Text>
+        </AppText>
       )}
-      {subtitle !== undefined && <Text style={styles.subtitle}>{subtitle}</Text>}
+      {subtitle !== undefined && (
+        <AppText role="caption" tone="secondary">
+          {subtitle}
+        </AppText>
+      )}
       {children}
     </View>
   );
@@ -42,13 +47,5 @@ const styles = StyleSheet.create({
   },
   muted: {
     backgroundColor: theme.color.surfaceMuted,
-  },
-  title: {
-    ...theme.textStyle.subheading,
-    color: theme.color.textPrimary,
-  },
-  subtitle: {
-    ...theme.textStyle.caption,
-    color: theme.color.textSecondary,
   },
 });

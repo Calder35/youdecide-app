@@ -1,12 +1,15 @@
 import { useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
+import { AppText } from '../components/AppText';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
+import { ErrorBanner } from '../components/Errors';
 import { Field } from '../components/Field';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { NOT_SHARED, buildHandoffPayload, summarizeHandoff } from '../data/handoff';
 import { MOCK_PLAN } from '../data/mock';
+import { readinessForHuman } from '../data/validation';
 import { ROUTES } from '../navigation/routes';
 import type { RootStackScreenProps } from '../navigation/types';
 import { useSellerSession } from '../state/SellerSession';
@@ -31,6 +34,7 @@ export function GetHumanScreen({ navigation, route }: RootStackScreenProps<'GetH
     plan: MOCK_PLAN,
   });
   const lines = summarizeHandoff(payload);
+  const missing = readinessForHuman(state.account);
 
   const send = () => {
     requestHuman(askedFrom, note);
@@ -44,7 +48,13 @@ export function GetHumanScreen({ navigation, route }: RootStackScreenProps<'GetH
       intro="Before anything is sent, here is exactly what a person would see."
       actions={
         <>
-          <Button label="Request a human" testID="cta-request-human" onPress={send} />
+          <Button
+            label="Request a human"
+            variant="human"
+            testID="cta-request-human"
+            accessibilityHint="In this preview build nothing is sent."
+            onPress={send}
+          />
           <Button
             label="Not now"
             variant="secondary"
@@ -54,6 +64,25 @@ export function GetHumanScreen({ navigation, route }: RootStackScreenProps<'GetH
         </>
       }
     >
+      {missing.length > 0 && (
+        // Never a blocker. Reaching a human is the one thing this app must not
+        // gate — we say what is missing and make it one tap to fix, then let
+        // the seller send it anyway if that is what they want.
+        <ErrorBanner
+          title={`We have no way to reply to you`}
+          message={`An agent needs ${missing.join(' and ')} to get back to you. You can add that now, or send this anyway and we will work it out.`}
+          testID="handoff-missing-contact"
+          action={
+            <Button
+              label="Add my contact details"
+              variant="secondary"
+              testID="cta-fix-contact"
+              onPress={() => navigation.navigate(ROUTES.AccountConsent)}
+            />
+          }
+        />
+      )}
+
       <Card
         tone="human"
         title="What transfers with this request"
@@ -62,8 +91,10 @@ export function GetHumanScreen({ navigation, route }: RootStackScreenProps<'GetH
       >
         {lines.map((line) => (
           <View key={line.label} style={styles.line} testID={`handoff-${slug(line.label)}`}>
-            <Text style={styles.lineLabel}>{line.label}</Text>
-            <Text style={styles.lineValue}>{line.value}</Text>
+            <AppText role="micro" tone="secondary" uppercase>
+              {line.label}
+            </AppText>
+            <AppText>{line.value}</AppText>
           </View>
         ))}
       </Card>
@@ -71,8 +102,10 @@ export function GetHumanScreen({ navigation, route }: RootStackScreenProps<'GetH
       <Card title="What does not">
         {NOT_SHARED.map((item) => (
           <View key={item} style={styles.bulletRow}>
-            <Text style={styles.never}>✕</Text>
-            <Text style={styles.bulletText}>{item}</Text>
+            <AppText role="bodyStrong" tone="danger">
+              ✕
+            </AppText>
+            <AppText style={styles.bulletText}>{item}</AppText>
           </View>
         ))}
       </Card>
@@ -90,17 +123,20 @@ export function GetHumanScreen({ navigation, route }: RootStackScreenProps<'GetH
       </Card>
 
       <Card tone="muted">
-        <Text style={styles.fine}>
+        <AppText role="caption" tone="secondary">
           Preview build — nothing is transmitted and no agent is contacted. Chunk 4 sends this exact
           payload to the backend test endpoint and writes the matching audit event.
-        </Text>
+        </AppText>
       </Card>
     </ScreenScaffold>
   );
 }
 
 function slug(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
 }
 
 const styles = StyleSheet.create({
@@ -110,31 +146,11 @@ const styles = StyleSheet.create({
     borderBottomColor: theme.color.border,
     gap: theme.space.xxs,
   },
-  lineLabel: {
-    ...theme.textStyle.micro,
-    color: theme.color.textSecondary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-  },
-  lineValue: {
-    ...theme.textStyle.body,
-    color: theme.color.textPrimary,
-  },
   bulletRow: {
     flexDirection: 'row',
     gap: theme.space.sm,
   },
-  never: {
-    ...theme.textStyle.bodyStrong,
-    color: theme.color.uncertaintyLow,
-  },
   bulletText: {
-    ...theme.textStyle.body,
-    color: theme.color.textPrimary,
     flex: 1,
-  },
-  fine: {
-    ...theme.textStyle.caption,
-    color: theme.color.textSecondary,
   },
 });

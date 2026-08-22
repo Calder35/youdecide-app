@@ -11,6 +11,8 @@
  *      total looks smaller than it is.
  */
 
+import { nv } from '../content/nevada';
+
 /** The listing-side fee rate. The product is named after it; it is not a knob. */
 export const LISTING_FEE_RATE = 0.01;
 
@@ -110,7 +112,8 @@ export const EXCLUDED: readonly { item: string; note: string }[] = [
   },
   {
     item: 'Nevada real property transfer tax',
-    note: 'Set by the county and paid at closing. Your escrow officer calculates the exact amount.',
+    // Nevada-specific claim — DRAFT, see src/content/nevada.ts.
+    note: nv('transferTax'),
   },
   {
     item: 'HOA transfer and document fees',

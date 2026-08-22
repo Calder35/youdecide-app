@@ -1,6 +1,7 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 import { theme } from '../theme';
+import { AppText } from './AppText';
 
 type Props<T extends string> = {
   label: string;
@@ -20,7 +21,7 @@ export function ChoiceGroup<T extends string>({
 }: Props<T>) {
   return (
     <View style={styles.container} accessibilityRole="radiogroup" accessibilityLabel={label}>
-      <Text style={styles.label}>{label}</Text>
+      <AppText role="bodyStrong">{label}</AppText>
       <View style={styles.options}>
         {options.map((option) => {
           const selected = option === value;
@@ -34,9 +35,12 @@ export function ChoiceGroup<T extends string>({
               onPress={() => onChange(option)}
               style={[styles.option, selected && styles.optionSelected]}
             >
-              <Text style={[styles.optionText, selected && styles.optionTextSelected]}>
+              <AppText
+                role={selected ? 'bodyStrong' : 'body'}
+                tone={selected ? 'action' : 'primary'}
+              >
                 {option}
-              </Text>
+              </AppText>
             </Pressable>
           );
         })}
@@ -56,10 +60,6 @@ const styles = StyleSheet.create({
   container: {
     gap: theme.space.sm,
   },
-  label: {
-    ...theme.textStyle.bodyStrong,
-    color: theme.color.textPrimary,
-  },
   options: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -72,19 +72,11 @@ const styles = StyleSheet.create({
     paddingVertical: theme.space.sm,
     borderRadius: theme.radius.pill,
     borderWidth: 1,
-    borderColor: theme.color.border,
+    borderColor: theme.color.controlBorder,
     backgroundColor: theme.color.surface,
   },
   optionSelected: {
     borderColor: theme.color.actionPrimary,
     backgroundColor: theme.color.sourceSurface,
-  },
-  optionText: {
-    ...theme.textStyle.body,
-    color: theme.color.textPrimary,
-  },
-  optionTextSelected: {
-    ...theme.textStyle.bodyStrong,
-    color: theme.color.actionPrimaryPressed,
   },
 });

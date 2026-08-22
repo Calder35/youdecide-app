@@ -50,6 +50,10 @@ export type ConsentDefinition = {
   title: string;
   /** What the seller is agreeing to, in one or two plain sentences. */
   body: string;
+  /** Why we need it. Explanation, so it may sit behind a disclosure. */
+  why: string;
+  /** What actually happens if they say no. Never a threat, never vague. */
+  ifDeclined: string;
   /** Required consents block progress; optional ones never do. */
   required: boolean;
 };

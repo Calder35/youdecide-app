@@ -1,9 +1,12 @@
 import { useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
+import { AppText } from '../components/AppText';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
+import { DraftNotice } from '../components/DraftNotice';
 import { ScreenScaffold } from '../components/ScreenScaffold';
+import { nv } from '../content/nevada';
 import { ROUTES } from '../navigation/routes';
 import type { RootStackScreenProps } from '../navigation/types';
 import { theme } from '../theme';
@@ -19,7 +22,8 @@ const REMOVED = [
 const RETAINED = [
   {
     what: 'Records tied to a completed transaction',
-    why: 'Nevada requires a brokerage to retain transaction records. Your escrow and closing paperwork is part of that.',
+    // Nevada-specific claim — DRAFT, see src/content/nevada.ts.
+    why: nv('recordRetention'),
   },
   {
     what: 'Your consent record',
@@ -40,6 +44,7 @@ export function DeleteAccountScreen({ navigation }: RootStackScreenProps<'Delete
           <>
             <Button
               label="Yes, request deletion"
+              variant="danger"
               testID="cta-confirm-delete"
               accessibilityHint="In this preview build nothing is deleted and nothing is sent."
               onPress={() => navigation.navigate(ROUTES.Status)}
@@ -54,6 +59,7 @@ export function DeleteAccountScreen({ navigation }: RootStackScreenProps<'Delete
         ) : (
           <Button
             label="Request account deletion"
+            variant="secondary"
             testID="cta-request-delete"
             onPress={() => setConfirming(true)}
           />
@@ -63,34 +69,41 @@ export function DeleteAccountScreen({ navigation }: RootStackScreenProps<'Delete
       <Card title="What gets deleted">
         {REMOVED.map((item) => (
           <View key={item} style={styles.bulletRow}>
-            <Text style={styles.removed}>✕</Text>
-            <Text style={styles.bulletText}>{item}</Text>
+            <AppText role="bodyStrong" tone="danger">
+              ✕
+            </AppText>
+            <AppText style={styles.bulletText}>{item}</AppText>
           </View>
         ))}
-        <Text style={styles.note}>Within 30 days of your request.</Text>
+        <AppText role="caption" tone="secondary">
+          Within 30 days of your request.
+        </AppText>
       </Card>
 
       <Card title="What we have to keep, and why">
+        <DraftNotice />
         {RETAINED.map((entry) => (
           <View key={entry.what} style={styles.entry}>
-            <Text style={styles.what}>{entry.what}</Text>
-            <Text style={styles.note}>{entry.why}</Text>
+            <AppText role="bodyStrong">{entry.what}</AppText>
+            <AppText role="caption" tone="secondary">
+              {entry.why}
+            </AppText>
           </View>
         ))}
       </Card>
 
       <Card tone="human" title="A person handles this">
-        <Text style={styles.bulletText}>
+        <AppText>
           Deletion is a high-consequence action, so it follows the same rule as everything else
           here: a licensed human confirms it with you first, and tells you what will remain.
-        </Text>
+        </AppText>
       </Card>
 
       {confirming && (
         <Card tone="muted" testID="delete-preview-note">
-          <Text style={styles.note}>
+          <AppText role="caption" tone="secondary">
             Preview build — no account exists, so nothing will be deleted and nothing is sent.
-          </Text>
+          </AppText>
         </Card>
       )}
     </ScreenScaffold>
@@ -102,25 +115,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: theme.space.sm,
   },
-  removed: {
-    ...theme.textStyle.bodyStrong,
-    color: theme.color.uncertaintyLow,
-  },
   bulletText: {
-    ...theme.textStyle.body,
-    color: theme.color.textPrimary,
     flex: 1,
   },
   entry: {
     paddingVertical: theme.space.sm,
     gap: theme.space.xxs,
-  },
-  what: {
-    ...theme.textStyle.bodyStrong,
-    color: theme.color.textPrimary,
-  },
-  note: {
-    ...theme.textStyle.caption,
-    color: theme.color.textSecondary,
   },
 });

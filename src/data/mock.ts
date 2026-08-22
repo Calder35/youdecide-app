@@ -9,6 +9,7 @@
  * person.
  */
 
+import { nv } from '../content/nevada';
 import type { PlanStep, PropertyDocument, PropertyFact, TimelineEntry } from './types';
 import { sourced } from './types';
 
@@ -78,13 +79,15 @@ export const MOCK_DOCUMENTS: readonly PropertyDocument[] = [
   {
     id: 'hoa-docs',
     label: 'HOA documents',
-    why: 'Buyers get these by law in Nevada, and getting them early avoids a delay at closing.',
+    // Nevada-specific claim — DRAFT, see src/content/nevada.ts.
+    why: nv('hoaDocuments'),
     status: 'needed',
   },
   {
     id: 'spds',
     label: "Seller's Real Property Disclosure",
-    why: 'Nevada requires it. We prepare it; you review and sign.',
+    // Nevada-specific claim — DRAFT, see src/content/nevada.ts.
+    why: nv('sellerDisclosure'),
     status: 'needed',
   },
   {
@@ -146,13 +149,13 @@ export const MOCK_PLAN: readonly PlanStep[] = [
   },
   {
     id: 'disclosures',
-    title: 'Prepare your Nevada disclosures',
-    detail:
-      "We draft the Seller's Real Property Disclosure from what you have told us. You read every line and correct anything that is wrong before it goes anywhere.",
+    title: 'Prepare your seller disclosures',
+    // Nevada-specific claim — DRAFT, see src/content/nevada.ts.
+    detail: nv('sellerDisclosure'),
     basis: sourced(
-      'Required for residential resale in Nevada',
-      'Nevada Revised Statutes, disclosure requirements',
-      'high',
+      'Nevada disclosure practice',
+      'Draft copy pending review by a licensed Nevada agent',
+      'low',
     ),
     needsHumanApproval: true,
     done: false,
@@ -160,8 +163,8 @@ export const MOCK_PLAN: readonly PlanStep[] = [
   {
     id: 'publish',
     title: 'Publish the listing',
-    detail:
-      'Nothing goes live until a licensed agent reviews the whole package with you and approves it. The app cannot publish on its own.',
+    // Nevada-specific claim — DRAFT, see src/content/nevada.ts.
+    detail: nv('licensedSupervision'),
     basis: sourced(
       'A licensed agent must review the listing before it is published',
       'You Decide supervision policy',
@@ -188,7 +191,7 @@ export const MOCK_TIMELINE: readonly TimelineEntry[] = [
   {
     id: 'plan',
     label: 'Listing plan drafted',
-    detail: 'Five steps, two of which a licensed agent has to approve.',
+    detail: 'Five steps, three of which a licensed agent has to approve.',
     state: 'done',
   },
   {
