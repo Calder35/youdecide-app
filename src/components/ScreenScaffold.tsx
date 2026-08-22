@@ -1,9 +1,10 @@
 import type { ReactNode } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { SELLER_FLOW_LENGTH, stepNumber, type RouteName } from '../navigation/routes';
 import { theme } from '../theme';
+import { AppText } from './AppText';
 import { GetHumanBar } from './GetHumanBar';
 
 type Props = {
@@ -36,14 +37,16 @@ export function ScreenScaffold({ route, title, intro, children, actions }: Props
       >
         <View style={styles.inner}>
           {step !== undefined && (
-            <Text style={styles.step} accessibilityRole="header">
+            <AppText role="micro" tone="secondary" uppercase accessibilityRole="header">
               Step {step} of {SELLER_FLOW_LENGTH}
-            </Text>
+            </AppText>
           )}
-          <Text style={styles.title} accessibilityRole="header">
+          <AppText role="title" accessibilityRole="header">
             {title}
-          </Text>
-          {intro !== undefined && <Text style={styles.intro}>{intro}</Text>}
+          </AppText>
+          {intro !== undefined && (
+            <AppText tone="secondary">{intro}</AppText>
+          )}
           {children}
         </View>
       </ScrollView>
@@ -70,17 +73,6 @@ const styles = StyleSheet.create({
     maxWidth: theme.layout.contentMaxWidth,
     alignSelf: 'center',
     gap: theme.space.md,
-  },
-  step: {
-    ...theme.textStyle.micro,
-    color: theme.color.textSecondary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-  },
-  title: theme.textStyle.title,
-  intro: {
-    ...theme.textStyle.body,
-    color: theme.color.textSecondary,
   },
   actions: {
     paddingHorizontal: theme.layout.screenPaddingHorizontal,

@@ -1,15 +1,15 @@
-import { StyleSheet, Text } from 'react-native';
-
+import { AppText } from '../components/AppText';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { ChoiceGroup } from '../components/ChoiceGroup';
 import { Field } from '../components/Field';
+import { DraftNotice } from '../components/DraftNotice';
 import { ScreenScaffold } from '../components/ScreenScaffold';
+import { nv } from '../content/nevada';
 import { OCCUPANCY_CHOICES, TIMELINE_CHOICES } from '../data/types';
 import { ROUTES } from '../navigation/routes';
 import type { RootStackScreenProps } from '../navigation/types';
 import { useSellerSession } from '../state/SellerSession';
-import { theme } from '../theme';
 
 export function SellerDiscoveryScreen({ navigation }: RootStackScreenProps<'SellerDiscovery'>) {
   const { state, setDiscoveryField } = useSellerSession();
@@ -64,9 +64,9 @@ export function SellerDiscoveryScreen({ navigation }: RootStackScreenProps<'Sell
           onChange={(value) => setDiscoveryField('timeline', value)}
           testIDPrefix="timeline"
         />
-        <Text style={styles.note}>
+        <AppText role="caption" tone="secondary">
           &ldquo;Just exploring&rdquo; is a real answer. Nothing here commits you to listing.
-        </Text>
+        </AppText>
       </Card>
 
       <Card title="Who's in the home">
@@ -77,10 +77,10 @@ export function SellerDiscoveryScreen({ navigation }: RootStackScreenProps<'Sell
           onChange={(value) => setDiscoveryField('occupancy', value)}
           testIDPrefix="occupancy"
         />
-        <Text style={styles.note}>
-          Tenant-occupied changes showing rules and notice periods in Nevada, so an agent will want
-          to talk this one through.
-        </Text>
+        <AppText role="caption" tone="secondary">
+          {nv('tenantOccupied')}
+        </AppText>
+        <DraftNotice />
       </Card>
 
       <Card title="Your reason">
@@ -97,10 +97,3 @@ export function SellerDiscoveryScreen({ navigation }: RootStackScreenProps<'Sell
     </ScreenScaffold>
   );
 }
-
-const styles = StyleSheet.create({
-  note: {
-    ...theme.textStyle.caption,
-    color: theme.color.textSecondary,
-  },
-});

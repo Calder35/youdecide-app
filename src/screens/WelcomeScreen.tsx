@@ -1,5 +1,6 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
+import { AppText } from '../components/AppText';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { FooterLinks } from '../components/FooterLinks';
@@ -46,11 +47,11 @@ export function WelcomeScreen({ navigation }: RootStackScreenProps<'Welcome'>) {
       }
     >
       <Card title="What the 1% is" subtitle="The listing-side fee, whole.">
-        <Text style={styles.body}>
+        <AppText>
           One percent of your sale price, and that is the entire listing-side fee. If you choose to
           offer a buyer&rsquo;s agent commission, that is a separate number that you set — we will
           show you exactly how the two add up before you decide anything.
-        </Text>
+        </AppText>
         <Button
           label="See what the 1% covers"
           variant="secondary"
@@ -63,18 +64,18 @@ export function WelcomeScreen({ navigation }: RootStackScreenProps<'Welcome'>) {
         <Card key={column.who} title={column.who}>
           {column.items.map((item) => (
             <View key={item} style={styles.bulletRow}>
-              <Text style={styles.bulletMark}>•</Text>
-              <Text style={styles.bulletText}>{item}</Text>
+              <AppText tone="secondary">•</AppText>
+              <AppText style={styles.bulletText}>{item}</AppText>
             </View>
           ))}
         </Card>
       ))}
 
       <Card tone="muted">
-        <Text style={styles.fine}>
+        <AppText role="caption" tone="secondary">
           Preview build. Nothing you enter here is sent anywhere, and no listing can be published
           from this app.
-        </Text>
+        </AppText>
       </Card>
 
       <FooterLinks />
@@ -83,25 +84,11 @@ export function WelcomeScreen({ navigation }: RootStackScreenProps<'Welcome'>) {
 }
 
 const styles = StyleSheet.create({
-  body: {
-    ...theme.textStyle.body,
-    color: theme.color.textPrimary,
-  },
   bulletRow: {
     flexDirection: 'row',
     gap: theme.space.sm,
   },
-  bulletMark: {
-    ...theme.textStyle.body,
-    color: theme.color.textSecondary,
-  },
   bulletText: {
-    ...theme.textStyle.body,
-    color: theme.color.textPrimary,
     flex: 1,
-  },
-  fine: {
-    ...theme.textStyle.caption,
-    color: theme.color.textSecondary,
   },
 });

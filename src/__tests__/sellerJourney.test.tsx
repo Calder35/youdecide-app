@@ -26,7 +26,8 @@ describe('scripted seller journey', () => {
     await typeInto('field-fullName', 'Jordan Rivera');
     await typeInto('field-email', 'jordan@example.com');
     await typeInto('field-phone', '(702) 555-0143');
-    expect(onTop('consent-gate')).toBeOnTheScreen();
+    // The Continue button is disabled and says why, rather than failing silently.
+    expect(onTop('cta-continue-reason')).toBeOnTheScreen();
     await giveRequiredConsents();
     await pressOnTop('cta-continue');
 

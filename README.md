@@ -30,8 +30,8 @@ These hold from the first commit, and tests enforce the ones that can be:
 3. **Privacy and account-deletion entry points exist** — reachable from the entry screen and from
    status.
 4. **Source and confidence on every number** — the app always shows where a figure came from and
-   how sure it is. `Sourced<T>` in `src/data/types.ts` makes a bare number awkward to display;
-   `SourceNote` renders it. Chunk 3 grows it into the full trust component.
+   how sure it is. `Sourced<T>` in `src/data/types.ts` makes a bare number awkward to display, and
+   `Figure` will not render a value without one.
 5. **No real credentials, no production side effects.**
 
 ## Stack
@@ -62,20 +62,30 @@ App.tsx                  navigation container + providers
 src/
   navigation/            route names, the flow order, the stack, param types
   screens/               one file per screen in the flow
-  components/            ScreenScaffold, GetHumanBar, Card, Field, SourceNote, …
-  data/                  fee math, consents, the handoff payload, mock records
+  components/            the design system — see src/components/README.md
+  content/               DRAFT Nevada copy, pending licensed review
+  data/                  fee math, consents, validation, the handoff payload, mock records
   state/                 SellerSession — everything the seller types, in one store
   theme/                 design tokens — color, typography, spacing
   test-utils/            renderApp helpers used by the integration tests
   __tests__/             flow, fee, consent, handoff, and journey tests
 ```
 
-Two files carry most of the product's weight:
+Three files carry most of the product’s weight:
 
 - **`src/data/fee.ts`** — the 1% math and the included/excluded lists, together, so the promise and
   the price cannot drift apart.
 - **`src/data/handoff.ts`** — the human-handoff payload *and* the disclosure the seller reads,
   built from the same object. A field cannot be sent without appearing in the list.
+- **`src/content/nevada.ts`** — ⚠️ every claim about what Nevada requires, in one place, marked
+  **DRAFT — pending licensed NV review**. None of it has been read by a licensed Nevada agent.
+  Every screen rendering it also renders `DraftNotice`, and tests enforce that pairing.
+
+## Accessibility
+
+Held by tests, not by memory: WCAG AA contrast on every text/background pair the app renders
+(`contrast.test.ts`), a name on every interactive control, a 44pt minimum target, and OS text
+scaling never switched off (`accessibility.test.tsx`).
 
 ## Build plan
 
@@ -84,8 +94,8 @@ Each chunk is one reviewable PR, stacked.
 | Chunk | What lands | Status |
 | ----- | ---------- | ------ |
 | 1 | Scaffold — Expo + TS skeleton, navigation shell, design tokens, CI | merged |
-| 2 | Interactive prototype — every screen wired with mock data, fully navigable | **this PR** |
-| 3 | Design system + trust UI — consent/disclosure, source & confidence display, a11y | planned |
+| 2 | Interactive prototype — every screen wired with mock data, fully navigable | merged |
+| 3 | Design system + trust UI — consent/disclosure, source & confidence display, a11y | **this PR** |
 | 4 | Backend test API — account/consent → workspace → request human | planned |
 
 **Milestone acceptance:** five users can complete the scripted seller intake and request a human,

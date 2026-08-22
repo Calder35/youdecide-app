@@ -1,7 +1,9 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
+import { AppText } from '../components/AppText';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
+import { DraftNotice } from '../components/DraftNotice';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SourceNote } from '../components/SourceNote';
 import { MOCK_PLAN } from '../data/mock';
@@ -18,11 +20,12 @@ export function AiPlanScreen({ navigation }: RootStackScreenProps<'AiPlan'>) {
     <ScreenScaffold
       route={ROUTES.AiPlan}
       title="Your listing plan"
-      intro={`Five steps, in order, each with what it was based on. ${needsApproval} of them cannot happen until a licensed Nevada agent approves them — the app cannot do those on its own.`}
+      intro={`${MOCK_PLAN.length} steps, in order, each with what it was based on. ${needsApproval} of them cannot happen until a licensed Nevada agent approves them — the app cannot do those on its own.`}
       actions={
         <>
           <Button
             label="Ask a licensed agent to review this"
+            variant="human"
             testID="cta-request-human"
             accessibilityHint="Opens the handoff screen, which lists exactly what is shared before anything is sent."
             onPress={() => navigation.navigate(ROUTES.GetHuman, { from: ROUTES.AiPlan })}
@@ -41,18 +44,25 @@ export function AiPlanScreen({ navigation }: RootStackScreenProps<'AiPlan'>) {
         return (
           <Card key={step.id} testID={`plan-${step.id}`}>
             <View style={styles.header}>
-              <Text style={styles.index}>{index + 1}</Text>
+              <AppText role="heading" style={styles.index}>
+                {index + 1}
+              </AppText>
               <View style={styles.headerCopy}>
-                <Text style={styles.title}>{step.title}</Text>
+                <AppText role="subheading">{step.title}</AppText>
                 {step.needsHumanApproval && (
-                  <Text style={styles.approval} testID={`approval-${step.id}`}>
+                  <AppText
+                    role="micro"
+                    tone="human"
+                    uppercase
+                    testID={`approval-${step.id}`}
+                  >
                     A licensed agent approves this
-                  </Text>
+                  </AppText>
                 )}
               </View>
             </View>
-            <Text style={styles.detail}>{step.detail}</Text>
-            <SourceNote of={step.basis} />
+            <AppText>{step.detail}</AppText>
+            <SourceNote of={step.basis} testID={`plan-${step.id}`} />
             <Pressable
               accessibilityRole="checkbox"
               accessibilityState={{ checked: done }}
@@ -62,19 +72,25 @@ export function AiPlanScreen({ navigation }: RootStackScreenProps<'AiPlan'>) {
               style={styles.toggle}
             >
               <View style={[styles.box, done && styles.boxChecked]}>
-                {done && <Text style={styles.check}>✓</Text>}
+                {done && (
+                  <AppText role="caption" tone="inverse">
+                    ✓
+                  </AppText>
+                )}
               </View>
-              <Text style={styles.toggleLabel}>{done ? 'Done' : 'Mark as done'}</Text>
+              <AppText tone="action">{done ? 'Done' : 'Mark as done'}</AppText>
             </Pressable>
           </Card>
         );
       })}
 
+      <DraftNotice />
+
       <Card tone="human" title="Nothing here goes live on its own">
-        <Text style={styles.detail}>
+        <AppText>
           This app cannot publish a listing, send an offer response, or sign anything. Those need a
           licensed Nevada agent, every time.
-        </Text>
+        </AppText>
       </Card>
     </ScreenScaffold>
   );
@@ -86,27 +102,12 @@ const styles = StyleSheet.create({
     gap: theme.space.md,
   },
   index: {
-    ...theme.textStyle.heading,
     color: theme.color.textDisabled,
     minWidth: 24,
   },
   headerCopy: {
     flex: 1,
     gap: theme.space.xxs,
-  },
-  title: {
-    ...theme.textStyle.subheading,
-    color: theme.color.textPrimary,
-  },
-  approval: {
-    ...theme.textStyle.micro,
-    color: theme.color.humanPressed,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-  },
-  detail: {
-    ...theme.textStyle.body,
-    color: theme.color.textPrimary,
   },
   toggle: {
     flexDirection: 'row',
@@ -125,13 +126,5 @@ const styles = StyleSheet.create({
   },
   boxChecked: {
     backgroundColor: theme.color.actionPrimary,
-  },
-  check: {
-    color: theme.color.actionPrimaryText,
-    ...theme.textStyle.caption,
-  },
-  toggleLabel: {
-    ...theme.textStyle.body,
-    color: theme.color.actionSecondaryText,
   },
 });

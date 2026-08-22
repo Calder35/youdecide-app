@@ -1,10 +1,11 @@
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 import { ROUTES, type RouteName } from '../navigation/routes';
 import type { RootStackParamList } from '../navigation/types';
 import { theme } from '../theme';
+import { AppText } from './AppText';
 
 export const GET_HUMAN_LABEL = 'Get a human';
 export const GET_HUMAN_TEST_ID = 'get-human-bar';
@@ -36,10 +37,12 @@ export function GetHumanBar() {
         }
         style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
       >
-        <Text style={styles.label}>{GET_HUMAN_LABEL}</Text>
-        <Text style={styles.sublabel}>
+        <AppText role="bodyStrong" tone="human">
+          {GET_HUMAN_LABEL}
+        </AppText>
+        <AppText role="caption" tone="secondary" style={styles.sublabel}>
           A licensed Nevada agent — you&rsquo;ll see what gets shared first
-        </Text>
+        </AppText>
       </Pressable>
     </View>
   );
@@ -67,13 +70,7 @@ const styles = StyleSheet.create({
   buttonPressed: {
     borderColor: theme.color.humanPressed,
   },
-  label: {
-    ...theme.textStyle.bodyStrong,
-    color: theme.color.humanPressed,
-  },
   sublabel: {
-    ...theme.textStyle.caption,
-    color: theme.color.textSecondary,
     marginTop: theme.space.xxs,
   },
 });
