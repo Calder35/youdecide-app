@@ -1,7 +1,8 @@
-# CI STUB — a starting point the App Developer can (and should) replace once the
-# stack is chosen (see STACK_DECISION.md). There is no app framework yet, so this
-# only sanity-checks that the repo's docs are present. Swap in a real
-# build/lint/test pipeline for the chosen framework (React Native or native).
+# CI for the You Decide seller app.
+#
+# Replaces the docs-only scaffold check that stood in while the stack was
+# undecided (see STACK_DECISION.md). Three gates, all required:
+#   typecheck → lint → test
 name: CI
 
 on:
@@ -9,16 +10,33 @@ on:
     branches: [main]
   pull_request:
 
+# A new push to a PR cancels the in-flight run for that PR.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  scaffold-check:
-    name: scaffold check (starter)
+  check:
+    name: typecheck · lint · test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Verify the foundation docs exist
-        run: |
-          set -e
-          for f in README.md ARCHITECTURE.md STACK_DECISION.md .gitignore; do
-            test -f "$f" || { echo "missing $f"; exit 1; }
-          done
-          echo "scaffold OK — replace this job once the stack is chosen."
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # `npm ci` — the lockfile is the source of truth, so CI installs exactly
+      # what was developed against.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm run test:ci
