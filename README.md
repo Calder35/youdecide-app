@@ -30,7 +30,8 @@ These hold from the first commit, and tests enforce the ones that can be:
 3. **Privacy and account-deletion entry points exist** — reachable from the entry screen and from
    status.
 4. **Source and confidence on every number** — the app always shows where a figure came from and
-   how sure it is. Token vocabulary is reserved in the theme; the components land in chunk 3.
+   how sure it is. `Sourced<T>` in `src/data/types.ts` makes a bare number awkward to display;
+   `SourceNote` renders it. Chunk 3 grows it into the full trust component.
 5. **No real credentials, no production side effects.**
 
 ## Stack
@@ -61,10 +62,20 @@ App.tsx                  navigation container + providers
 src/
   navigation/            route names, the flow order, the stack, param types
   screens/               one file per screen in the flow
-  components/            ScreenScaffold, GetHumanBar, Button, FooterLinks
+  components/            ScreenScaffold, GetHumanBar, Card, Field, SourceNote, …
+  data/                  fee math, consents, the handoff payload, mock records
+  state/                 SellerSession — everything the seller types, in one store
   theme/                 design tokens — color, typography, spacing
-  __tests__/             flow-order, token, and navigation tests
+  test-utils/            renderApp helpers used by the integration tests
+  __tests__/             flow, fee, consent, handoff, and journey tests
 ```
+
+Two files carry most of the product's weight:
+
+- **`src/data/fee.ts`** — the 1% math and the included/excluded lists, together, so the promise and
+  the price cannot drift apart.
+- **`src/data/handoff.ts`** — the human-handoff payload *and* the disclosure the seller reads,
+  built from the same object. A field cannot be sent without appearing in the list.
 
 ## Build plan
 
@@ -72,8 +83,8 @@ Each chunk is one reviewable PR, stacked.
 
 | Chunk | What lands | Status |
 | ----- | ---------- | ------ |
-| 1 | Scaffold — Expo + TS skeleton, navigation shell, design tokens, CI | **this PR** |
-| 2 | Interactive prototype — every screen wired with mock data, fully navigable | next |
+| 1 | Scaffold — Expo + TS skeleton, navigation shell, design tokens, CI | merged |
+| 2 | Interactive prototype — every screen wired with mock data, fully navigable | **this PR** |
 | 3 | Design system + trust UI — consent/disclosure, source & confidence display, a11y | planned |
 | 4 | Backend test API — account/consent → workspace → request human | planned |
 
