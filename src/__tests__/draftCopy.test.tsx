@@ -4,7 +4,7 @@ import { join } from 'node:path';
 
 import { DRAFT_NOTICE_TEST_ID } from '../components/DraftNotice';
 import { NEVADA_COPY, NEVADA_COPY_IS_DRAFT, REVIEW_STATUS } from '../content/nevada';
-import { giveRequiredConsents, onTop, pressOnTop, renderApp } from '../test-utils/renderApp';
+import { giveRequiredConsents, onTop, pressOnTop, renderIntake } from '../test-utils/renderApp';
 
 /**
  * The guard on unreviewed Nevada copy.
@@ -50,7 +50,7 @@ describe('unreviewed Nevada copy', () => {
 
 describe('screens carrying Nevada copy', () => {
   it('marks the seller discovery screen', async () => {
-    await renderApp();
+    await renderIntake();
     await pressOnTop('cta-continue');
     await giveRequiredConsents();
     await pressOnTop('cta-continue');
@@ -59,14 +59,14 @@ describe('screens carrying Nevada copy', () => {
   });
 
   it('marks the 1% screen, where the transfer-tax claim sits', async () => {
-    await renderApp();
+    await renderIntake();
     await pressOnTop('cta-see-fee');
     expect(screen.getByText(NEVADA_COPY.transferTax.text)).toBeOnTheScreen();
     expect(onTop(DRAFT_NOTICE_TEST_ID)).toBeOnTheScreen();
   });
 
   it('marks the property workspace, where the document claims sit', async () => {
-    await renderApp();
+    await renderIntake();
     await pressOnTop('cta-continue');
     await giveRequiredConsents();
     await pressOnTop('cta-continue');
@@ -77,14 +77,14 @@ describe('screens carrying Nevada copy', () => {
   });
 
   it('marks the account deletion screen', async () => {
-    await renderApp();
+    await renderIntake();
     await pressOnTop('link-delete-account');
     expect(screen.getByText(NEVADA_COPY.recordRetention.text)).toBeOnTheScreen();
     expect(onTop(DRAFT_NOTICE_TEST_ID)).toBeOnTheScreen();
   });
 
   it('marks the privacy screen', async () => {
-    await renderApp();
+    await renderIntake();
     await pressOnTop('link-privacy');
     expect(screen.getByText(NEVADA_COPY.recordRetention.text)).toBeOnTheScreen();
     expect(onTop(DRAFT_NOTICE_TEST_ID)).toBeOnTheScreen();
