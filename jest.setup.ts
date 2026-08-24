@@ -57,6 +57,14 @@ jest.mock('expo-audio', () => ({
   })),
 }));
 
+// The legacy async writer is what actually writes spoken replies — the modern
+// synchronous File.write() failed on device with a native FunctionCallException.
+jest.mock('expo-file-system/legacy', () => ({
+  cacheDirectory: 'file:///tmp/cache/',
+  makeDirectoryAsync: jest.fn(async () => undefined),
+  writeAsStringAsync: jest.fn(async () => undefined),
+}));
+
 jest.mock('expo-file-system', () => {
   class FakeFile {
     uri = 'file:///tmp/voice/reply.mp3';

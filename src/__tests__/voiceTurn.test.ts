@@ -9,6 +9,7 @@ import {
 } from '../voice/types';
 import { runVoiceTurn, type VoiceTurnStage } from '../voice/voiceTurn';
 import { mimeTypeFor } from '../voice/useMicrophone';
+import { expoFileBridge } from '../voice/expoFileBridge';
 
 const AUDIO: RecordedAudio = {
   uri: 'file:///tmp/recording.m4a',
@@ -406,5 +407,51 @@ describe('speaking is reliable, or says why it was not', () => {
     expect(lines.join('\n')).toMatch(/retrying once/);
     expect(lines.join('\n')).toMatch(/speak failed — .*tts really down/);
     expect(h.errors[0].kind).toBe('speakFailed');
+  });
+});
+
+/**
+ * The file bridge is where spoken replies land, and it is where they were being
+ * lost. The modern synchronous `File.write()` threw on device for every reply:
+ *
+ *   FunctionCallException: Calling the 'write' function has failed
+ *
+ * These pin the shape of the fix so a future tidy-up does not walk back into it.
+ */
+describe('writing spoken audio to disk', () => {
+  it('uses the ASYNC writer, not the synchronous one', async () => {
+    const legacy = jest.requireMock('expo-file-system/legacy') as {
+      writeAsStringAsync: jest.Mock;
+      makeDirectoryAsync: jest.Mock;
+    };
+    legacy.writeAsStringAsync.mockClear();
+
+    const uri = await expoFileBridge.writeBase64('QUJD', 'audio/mpeg');
+
+    expect(legacy.writeAsStringAsync).toHaveBeenCalledTimes(1);
+    const [writtenTo, contents, options] = legacy.writeAsStringAsync.mock.calls[0];
+    expect(contents).toBe('QUJD');
+    expect(options).toEqual({ encoding: 'base64' });
+    // Named by content type, in the cache — spoken replies are disposable.
+    expect(String(writtenTo)).toMatch(/\.mp3$/);
+    expect(String(writtenTo)).toContain('voice');
+    expect(uri).toBe(writtenTo);
+  });
+
+  it('names the file for what the audio actually is', async () => {
+    const legacy = jest.requireMock('expo-file-system/legacy') as { writeAsStringAsync: jest.Mock };
+
+    for (const [mime, extension] of [
+      ['audio/mpeg', 'mp3'],
+      ['audio/m4a', 'm4a'],
+      ['audio/wav', 'wav'],
+      ['application/octet-stream', 'bin'],
+    ] as const) {
+      legacy.writeAsStringAsync.mockClear();
+      await expoFileBridge.writeBase64('QUJD', mime);
+      expect(`${mime}: ${legacy.writeAsStringAsync.mock.calls[0][0]}`).toMatch(
+        new RegExp(`\\.${extension}$`),
+      );
+    }
   });
 });
