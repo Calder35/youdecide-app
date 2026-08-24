@@ -13,6 +13,7 @@ import { AppText } from '../components/AppText';
 import { ChatBubble } from '../components/ChatBubble';
 import { ChatComposer } from '../components/ChatComposer';
 import { EscalationOffer } from '../components/EscalationOffer';
+import { SafetyNotice } from '../components/SafetyNotice';
 import { InlineError } from '../components/Errors';
 import { MicButton, VoiceStage } from '../components/MicButton';
 import { TypingIndicator } from '../components/TypingIndicator';
@@ -84,6 +85,7 @@ export function ChatScreen({ navigation }: RootStackScreenProps<'Chat'>) {
 
             {thinking && <TypingIndicator />}
 
+            <SafetyNotice kind={escalation} />
             <EscalationOffer kind={escalation} note={escalationNote} />
 
             {error !== null && (

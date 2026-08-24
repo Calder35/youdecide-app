@@ -1,21 +1,25 @@
 import { screen, waitFor } from '@testing-library/react-native';
 
 import { ApiClient } from '../api/client';
-import { CRISIS_RESOURCE_TEST_ID, ESCALATION_TEST_ID } from '../components/EscalationOffer';
+import { ESCALATION_TEST_ID } from '../components/EscalationOffer';
+import { SAFETY_NOTICE_TEST_ID } from '../components/SafetyNotice';
 import { onTop, renderApp, sayToAi } from '../test-utils/renderApp';
 
 /**
- * What the handoff card is allowed to say, and when.
+ * What the housing conversation is allowed to put in front of someone.
  *
- * These exist because of a live test that went wrong. The backend fired
- * `escalate_kind: "distress"` at someone saying they were behind on their
- * mortgage, and the app rendered a suicide-hotline card over a financial
- * conversation — and because escalation was sticky, it stayed there for the
- * rest of the session.
+ * THIS IS A HOUSING PRODUCT. Being behind on a mortgage or facing foreclosure
+ * is an ordinary business situation, handled in discovery. It is not a crisis,
+ * and it must never produce an emotional card, a hotline, or "let's get a
+ * person with you".
  *
- * Two separate failures, both held here:
- *   1. crisis copy appearing for a non-crisis handoff, and
- *   2. one turn's escalation outliving the turn it came from.
+ * A live test produced exactly that — a suicide-hotline card at someone talking
+ * about mortgage arrears, which then stuck for the rest of the session. These
+ * tests hold the three rules that came out of it:
+ *   1. `none` renders nothing at all,
+ *   2. the only card in the housing flow is a professional, service-framed
+ *      handoff with no emotional or crisis language anywhere in it,
+ *   3. an escalation belongs to its turn, not to the session.
  */
 
 /** A backend that answers with whatever escalation the test asks for. */
@@ -48,42 +52,38 @@ describe('escalate_kind: none renders a clean conversation', () => {
       expect(screen.getByText('Tell me more about what is worrying you.')).toBeOnTheScreen(),
     );
     expect(screen.queryByTestId(ESCALATION_TEST_ID)).toBeNull();
-    expect(screen.queryByTestId(CRISIS_RESOURCE_TEST_ID)).toBeNull();
+    expect(screen.queryByTestId(SAFETY_NOTICE_TEST_ID)).toBeNull();
     expect(screen.queryByText(/988/)).toBeNull();
+  });
+
+  it('renders no card for mortgage arrears — the situation this product is for', async () => {
+    const client = backendSaying([
+      {
+        reply: 'How far behind are you, and has the lender been in touch?',
+        escalate: false,
+        escalate_kind: 'none',
+      },
+    ]);
+    await renderApp({ client });
+
+    await sayToAi('I am three months behind on my mortgage and worried about foreclosure.');
+
+    await waitFor(() =>
+      expect(
+        screen.getByText('How far behind are you, and has the lender been in touch?'),
+      ).toBeOnTheScreen(),
+    );
+    expect(screen.queryByTestId(ESCALATION_TEST_ID)).toBeNull();
+    expect(screen.queryByTestId(SAFETY_NOTICE_TEST_ID)).toBeNull();
+    expect(screen.queryByText(/988/)).toBeNull();
+    expect(screen.queryByText(/get a person with you/i)).toBeNull();
   });
 });
 
-describe('crisis copy is reserved for genuine distress', () => {
-  it('shows 988 when the backend says distress', async () => {
-    const client = backendSaying([
-      { reply: 'I want to stop and say something.', escalate: true, escalate_kind: 'distress' },
-    ]);
-    await renderApp({ client });
+describe('the only card in the housing flow is a professional handoff', () => {
+  const CRISIS_LANGUAGE = [/988/, /suicide/i, /crisis/i, /immediate danger/i, /on your own/i];
 
-    await sayToAi('I do not want to be here anymore.');
-
-    await waitFor(() => expect(onTop(ESCALATION_TEST_ID)).toBeOnTheScreen());
-    expect(onTop(CRISIS_RESOURCE_TEST_ID)).toBeOnTheScreen();
-    expect(screen.getByText(/988/)).toBeOnTheScreen();
-  });
-
-  it('shows NO crisis copy for a support handoff', async () => {
-    const client = backendSaying([
-      { reply: 'That is a hard spot to be in.', escalate: true, escalate_kind: 'support' },
-    ]);
-    await renderApp({ client });
-
-    await sayToAi('I am behind on my mortgage and it is stressing me out.');
-
-    await waitFor(() => expect(onTop(ESCALATION_TEST_ID)).toBeOnTheScreen());
-    // The offer is there. The suicide hotline is not.
-    expect(screen.queryByTestId(CRISIS_RESOURCE_TEST_ID)).toBeNull();
-    expect(screen.queryByText(/988/)).toBeNull();
-    expect(screen.queryByText(/Suicide/i)).toBeNull();
-    expect(screen.queryByText(/immediate danger/i)).toBeNull();
-  });
-
-  it('shows NO crisis copy for a licensed handoff', async () => {
+  it('frames a licensed handoff as service, with no emotional language', async () => {
     const client = backendSaying([
       { reply: 'That needs someone licensed.', escalate: true, escalate_kind: 'licensed' },
     ]);
@@ -92,33 +92,78 @@ describe('crisis copy is reserved for genuine distress', () => {
     await sayToAi('What does the contract legally require me to disclose?');
 
     await waitFor(() => expect(onTop(ESCALATION_TEST_ID)).toBeOnTheScreen());
-    expect(screen.queryByTestId(CRISIS_RESOURCE_TEST_ID)).toBeNull();
-    expect(screen.queryByText(/988/)).toBeNull();
+    expect(screen.getByText(/A licensed teammate can take this step/)).toBeOnTheScreen();
+    expect(screen.getByText(/Hand this step to a teammate/)).toBeOnTheScreen();
+
+    for (const pattern of CRISIS_LANGUAGE) {
+      expect(`${pattern} -> ${screen.queryAllByText(pattern).length}`).toBe(`${pattern} -> 0`);
+    }
   });
 
-  it('does not treat a bare escalate:true as a crisis', async () => {
-    // A backend that sends only the boolean means "someone should help", not
-    // "this person is in danger". Guessing crisis from an ambiguous signal is
-    // the mistake this whole file exists to prevent.
+  it('uses the same professional card when the backend says support', async () => {
+    const client = backendSaying([
+      { reply: 'Let me get someone onto that.', escalate: true, escalate_kind: 'support' },
+    ]);
+    await renderApp({ client });
+
+    await sayToAi('This is getting complicated.');
+
+    await waitFor(() => expect(onTop(ESCALATION_TEST_ID)).toBeOnTheScreen());
+    expect(screen.getByText(/A licensed teammate can take this step/)).toBeOnTheScreen();
+    for (const pattern of CRISIS_LANGUAGE) {
+      expect(`${pattern} -> ${screen.queryAllByText(pattern).length}`).toBe(`${pattern} -> 0`);
+    }
+  });
+
+  it('never renders an emotional card, whatever the backend sends', async () => {
+    for (const kind of ['none', 'support', 'licensed'] as const) {
+      const client = backendSaying([{ reply: 'Understood.', escalate: true, escalate_kind: kind }]);
+      await renderApp({ client });
+      await sayToAi('I cannot afford the payments any more.');
+      await waitFor(() => expect(screen.getByText('Understood.')).toBeOnTheScreen());
+
+      expect(`${kind}: ${screen.queryAllByText(/Let's get a person with you/i).length}`).toBe(
+        `${kind}: 0`,
+      );
+      expect(`${kind}: ${screen.queryAllByTestId(SAFETY_NOTICE_TEST_ID).length}`).toBe(`${kind}: 0`);
+    }
+  });
+
+  it('does not treat a bare escalate:true as distress', async () => {
     const client = backendSaying([{ reply: 'Let me help with that.', escalate: true }]);
     await renderApp({ client });
 
     await sayToAi('This is getting complicated.');
 
     await waitFor(() => expect(onTop(ESCALATION_TEST_ID)).toBeOnTheScreen());
-    expect(screen.queryByTestId(CRISIS_RESOURCE_TEST_ID)).toBeNull();
+    expect(screen.queryByTestId(SAFETY_NOTICE_TEST_ID)).toBeNull();
+  });
+});
+
+describe('safety copy is separate, and out of the housing flow', () => {
+  it('appears only when the backend explicitly says distress', async () => {
+    const client = backendSaying([
+      { reply: 'I want to stop and say something.', escalate: true, escalate_kind: 'distress' },
+    ]);
+    await renderApp({ client });
+
+    await sayToAi('I do not want to be here anymore.');
+
+    await waitFor(() => expect(onTop(SAFETY_NOTICE_TEST_ID)).toBeOnTheScreen());
+    // It is its own notice, not the handoff card.
+    expect(screen.queryByTestId(ESCALATION_TEST_ID)).toBeNull();
   });
 });
 
 describe('an escalation belongs to its turn, not to the session', () => {
   it('clears the card when the next turn is none', async () => {
     const client = backendSaying([
-      { reply: 'I want to stop and say something.', escalate: true, escalate_kind: 'distress' },
+      { reply: 'That needs someone licensed.', escalate: true, escalate_kind: 'licensed' },
       { reply: 'Understood — tell me more.', escalate: false, escalate_kind: 'none' },
     ]);
     await renderApp({ client });
 
-    await sayToAi('Something heavy.');
+    await sayToAi('Something about the contract.');
     await waitFor(() => expect(onTop(ESCALATION_TEST_ID)).toBeOnTheScreen());
 
     // A false positive should cost one turn, not the rest of the conversation.
@@ -128,21 +173,6 @@ describe('an escalation belongs to its turn, not to the session', () => {
     );
     expect(screen.queryByTestId(ESCALATION_TEST_ID)).toBeNull();
     expect(screen.queryByText(/988/)).toBeNull();
-  });
-
-  it('replaces a support offer with a crisis card when things get worse', async () => {
-    const client = backendSaying([
-      { reply: 'That is hard.', escalate: true, escalate_kind: 'support' },
-      { reply: 'I want to stop and say something.', escalate: true, escalate_kind: 'distress' },
-    ]);
-    await renderApp({ client });
-
-    await sayToAi('I am behind on payments.');
-    await waitFor(() => expect(onTop(ESCALATION_TEST_ID)).toBeOnTheScreen());
-    expect(screen.queryByTestId(CRISIS_RESOURCE_TEST_ID)).toBeNull();
-
-    await sayToAi('Honestly I do not want to be here anymore.');
-    await waitFor(() => expect(onTop(CRISIS_RESOURCE_TEST_ID)).toBeOnTheScreen());
   });
 });
 

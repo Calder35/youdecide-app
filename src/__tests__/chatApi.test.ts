@@ -187,13 +187,21 @@ describe('the local stub, until the endpoint exists', () => {
     }
   });
 
-  it('offers support for a hard circumstance', () => {
+  /**
+   * Housing product: financial hardship is the ordinary reason people sell a
+   * house, not an emergency. It is handled in conversation with no card.
+   */
+  it('does NOT escalate financial hardship — it is ordinary business here', () => {
     for (const message of [
       'We are in foreclosure',
+      'I am three months behind on my mortgage',
+      'I lost my job and I cannot afford the payments',
       'My husband died in March',
-      'I lost my job and I am behind on payments',
+      'We are getting divorced and the house has to go',
     ]) {
-      expect(stubReply(newStubConversation(), message).reply.escalate).toBe('support');
+      expect(`${message}: ${stubReply(newStubConversation(), message).reply.escalate}`).toBe(
+        `${message}: none`,
+      );
     }
   });
 

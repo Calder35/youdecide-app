@@ -34,11 +34,13 @@ export function newStubConversation(seed = 'local'): StubConversation {
 }
 
 /**
- * Language that means someone is having a hard time, in two tiers.
+ * CRISIS is narrow and about harm to self, and nothing else belongs in it.
  *
- * CRISIS is narrow and about harm to self. Everything in HARDSHIP is a heavy
- * life event — real, common in this business, and worth a human — but it is
- * not a crisis, and treating it as one would be its own kind of unkind.
+ * There is no "hardship" tier any more. Arrears, foreclosure, an unaffordable
+ * payment, a divorce, a death in the family — these are the ordinary reasons
+ * people sell a house. This is a housing product; it handles them in
+ * conversation, professionally, with no card of any kind. Treating a financial
+ * situation as an emotional emergency is both wrong and unhelpful.
  */
 const CRISIS = [
   'kill myself',
@@ -53,36 +55,6 @@ const CRISIS = [
   "don't want to live",
   'want to die',
   'no reason to live',
-];
-
-const HARDSHIP = [
-  'foreclosure',
-  'foreclose',
-  'eviction',
-  'evicted',
-  'divorce',
-  'divorcing',
-  'separated',
-  'passed away',
-  'died',
-  'death',
-  'funeral',
-  'cancer',
-  'illness',
-  'hospice',
-  'lost my job',
-  'laid off',
-  'unemployed',
-  "can't afford",
-  'cannot afford',
-  'behind on payments',
-  'bankruptcy',
-  'overwhelmed',
-  'scared',
-  'terrified',
-  'desperate',
-  'panic',
-  'no idea what to do',
 ];
 
 /** Questions a licensed person has to answer, not an AI. */
@@ -166,22 +138,7 @@ export function stubReply(
         conversationId: conversation.id,
         escalate: 'distress',
         reply:
-          "I want to stop and say something directly, because it matters more than anything else we were talking about.\n\nWhat you've just told me sounds really heavy, and I don't want you to be holding it on your own. I'm not the right kind of help for this — a person is.",
-        escalationNote:
-          'Someone here can talk with you now, and property is not what they will want to talk about first.',
-      },
-    };
-  }
-
-  if (mentions(message, HARDSHIP)) {
-    return {
-      next,
-      reply: {
-        conversationId: conversation.id,
-        escalate: 'support',
-        reply: `I'm sorry — ${quote(fragment)} is genuinely hard, and I don't want to move past it to get to the practical part.\n\nWhat you're dealing with shapes what the right options are, so it isn't a detour. Take whatever time you need. What's weighing on you most right now?`,
-        escalationNote:
-          'When you want one, there is a person here who has helped people through exactly this.',
+          "I want to stop and say something directly, because it matters more than anything else we were talking about.\n\nWhat you've just told me sounds really heavy, and I don't want you to be holding it on your own. I'm not the right kind of help for this.",
       },
     };
   }
@@ -194,7 +151,8 @@ export function stubReply(
         escalate: 'licensed',
         reply:
           "That's a question I shouldn't answer on my own — it's the kind that needs someone licensed, because getting it wrong would cost you.\n\nI can tell you what I do understand about your situation so far, and make sure the right person picks it up with the full picture rather than from scratch.",
-        escalationNote: 'A licensed Nevada agent should be the one to answer this.',
+        escalationNote:
+          'This step needs a licensed teammate. They will pick it up with everything we have covered.',
       },
     };
   }

@@ -1,6 +1,7 @@
 import { screen, waitFor } from '@testing-library/react-native';
 
 import { ESCALATION_TEST_ID } from '../components/EscalationOffer';
+import { SAFETY_NOTICE_TEST_ID } from '../components/SafetyNotice';
 import { TYPING_TEST_ID } from '../components/TypingIndicator';
 import { CHAT_SCREEN_TEST_ID } from '../screens/ChatScreen';
 import { onTop, pressOnTop, renderApp, sayToAi } from '../test-utils/renderApp';
@@ -120,35 +121,37 @@ describe('the AI leads with discovery', () => {
 });
 
 describe('a person arrives only when the AI decides one is needed', () => {
-  it('offers support when someone describes a hard circumstance', async () => {
+  it('shows NO card for financial hardship — it is handled in the conversation', async () => {
     await renderApp();
-    await sayToAi('We are facing foreclosure and I am scared.');
-    await waitFor(() => expect(onTop(ESCALATION_TEST_ID)).toBeOnTheScreen());
-    expect(screen.getByText(/There is someone here when you want them/)).toBeOnTheScreen();
+    await sayToAi('We are facing foreclosure and I am behind on the mortgage.');
+    // A housing product treats this as business, not as an emergency.
+    expect(screen.queryByTestId(ESCALATION_TEST_ID)).toBeNull();
+    expect(screen.queryByTestId(SAFETY_NOTICE_TEST_ID)).toBeNull();
+    expect(screen.queryByText(/988/)).toBeNull();
   });
 
   it('hands a licensed question to a licensed person', async () => {
     await renderApp();
     await sayToAi('Can you tell me what the contract legally requires me to disclose?');
     await waitFor(() => expect(onTop(ESCALATION_TEST_ID)).toBeOnTheScreen());
-    expect(screen.getByText(/needs a licensed agent/i)).toBeOnTheScreen();
+    expect(screen.getByText(/A licensed teammate can take this step/)).toBeOnTheScreen();
   });
 
-  it('responds to distress with care, and does not talk about property', async () => {
+  it('keeps safety copy in its own notice, away from the handoff card', async () => {
     await renderApp();
     await sayToAi('Honestly I do not want to live anymore.');
-    await waitFor(() => expect(onTop(ESCALATION_TEST_ID)).toBeOnTheScreen());
+    await waitFor(() => expect(onTop(SAFETY_NOTICE_TEST_ID)).toBeOnTheScreen());
 
-    expect(screen.getByText(/Let's get a person with you/)).toBeOnTheScreen();
-    expect(screen.getByText(/immediate danger/i)).toBeOnTheScreen();
-    // Nothing transactional appears next to someone in crisis.
+    // Its own notice, not the professional handoff card.
+    expect(screen.queryByTestId(ESCALATION_TEST_ID)).toBeNull();
+    // Nothing transactional appears beside it.
     expect(screen.queryByText(/1%/)).toBeNull();
     expect(screen.queryByText(/listing/i)).toBeNull();
   });
 
   it('leads to the handoff, which still says what would be shared', async () => {
     await renderApp();
-    await sayToAi('I lost my job and cannot afford the payments.');
+    await sayToAi('What does the contract legally require me to disclose?');
     await waitFor(() => expect(onTop(ESCALATION_TEST_ID)).toBeOnTheScreen());
     await pressOnTop('escalation-accept');
     expect(screen.getByText('What transfers with this request')).toBeOnTheScreen();
