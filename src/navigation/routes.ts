@@ -7,6 +7,8 @@
  */
 
 export const ROUTES = {
+  /** The front door: a discovery conversation with You Decide AI. */
+  Chat: 'Chat',
   Welcome: 'Welcome',
   AccountConsent: 'AccountConsent',
   SellerDiscovery: 'SellerDiscovery',
@@ -22,9 +24,15 @@ export const ROUTES = {
 export type RouteName = (typeof ROUTES)[keyof typeof ROUTES];
 
 /**
- * The scripted seller intake, in order. `GetHuman` is deliberately NOT in this
- * list: it is reachable from every screen at any time, not a step you arrive at
- * by finishing the one before it.
+ * The scripted seller intake, in order.
+ *
+ * This is NO LONGER THE OPENING. `Chat` is where a person arrives; these
+ * screens are what the conversation leads to once there is a reason for them.
+ * They keep their step counter because, once you are in them, they genuinely
+ * are a sequence.
+ *
+ * `Chat` and `GetHuman` are both deliberately absent: neither is a step you
+ * reach by finishing the one before it.
  */
 export const SELLER_FLOW: readonly RouteName[] = [
   ROUTES.Welcome,

@@ -14,6 +14,7 @@ live — not because a screen wanted a wrapper.
 | Errors say what to do, and are announced | `InlineError` / `ErrorBanner`, both `role="alert"` |
 | Nothing tappable is under 44pt, nothing turns off text scaling | `theme.hitTarget`, `AppText`, and the sweep in `accessibility.test.tsx` |
 | Unreviewed Nevada copy is visibly marked | `DraftNotice`, paired with `src/content/nevada.ts` |
+| A person enters only when the AI decides one is needed | `EscalationOffer` — there is no standing "talk to a human" control |
 
 ## The components
 
@@ -45,11 +46,20 @@ explanation of what that confidence level actually means.
 when a licensed agent signs off, flipping that one constant removes every
 notice at once.
 
-**`ScreenScaffold`** — owns what a screen cannot opt out of: the persistent
-"Get a human" bar, the step counter, safe-area and scroll.
+**`EscalationOffer`** — the only route from the conversation to a person.
+Renders solely on the backend's `escalate` signal, phrased as accepting
+something the AI offered rather than as an escape from it. `distress` is the one
+case that is unmistakable rather than subtle.
 
-**`Card`**, **`ChoiceGroup`**, **`FooterLinks`**, **`GetHumanBar`** — layout and
-navigation primitives.
+**`ChatBubble` / `ChatComposer` / `TypingIndicator`** — the conversation. Each
+bubble is a single accessibility element so a screen reader announces who spoke.
+
+**`ScreenScaffold`** — the intake screens' frame: step counter, safe-area,
+scroll. It no longer renders a persistent "Get a human" bar; that was removed
+deliberately (see `EscalationOffer`).
+
+**`Card`**, **`ChoiceGroup`**, **`FooterLinks`** — layout and navigation
+primitives.
 
 ## Adding one
 

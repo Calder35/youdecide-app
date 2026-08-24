@@ -10,11 +10,26 @@ reachable at every consequential step**.
 > **Non-production.** Review-ready only — no real credentials, no production systems, nothing
 > published. Backend work targets the **test** endpoints of `Calder35/youdecide-ai-backend`.
 
-## The seller flow
+## The opening: a conversation
+
+The app opens on a **discovery conversation with You Decide AI**. It asks about the person,
+listens, and reflects back what it heard. No fee, no "list your home", no intake form in front of
+anyone — those exist, but they are what the conversation leads to, not what it starts with.
+
+```
+You Decide AI (discovery)  →  … only when there is a reason …  →  the intake flow below
+```
+
+The conversation lives in [`src/screens/ChatScreen.tsx`](src/screens/ChatScreen.tsx), backed by
+`POST /v1/chat`. Until that endpoint exists, a local stub in
+[`src/api/chatStub.ts`](src/api/chatStub.ts) runs the same discovery arc so the screen is fully
+demoable with no backend. Pointing at the real thing is one env var.
+
+### The intake flow, once a person gets there
 
 ```
 welcome → account & consent → seller discovery → the 1% explanation
-        → property workspace → AI plan/prep → "get a human" handoff → status
+        → property workspace → AI plan/prep → handoff → status
 ```
 
 The order lives in one file — [`src/navigation/routes.ts`](src/navigation/routes.ts) — and the
@@ -24,8 +39,11 @@ screens read it rather than hard-coding what comes next.
 
 These hold from the first commit, and tests enforce the ones that can be:
 
-1. **"Get a human" is persistent** — rendered on every screen by `ScreenScaffold`, not by
-   individual screens, and it shows **what information transfers** before anything is sent.
+1. **A person arrives only when the AI decides one is needed.** There is no standing "talk to a
+   human" button — that framed the AI as a waiting room in front of a person. The backend's
+   `escalate` field drives it, the offer is AI-initiated, and it still shows **what information
+   transfers** before anything is sent. Distress is handled with care and never as a sales moment.
+   *(This reverses the persistent-bar rule from chunks 1–4 — see PR #8.)*
 2. **The 1% offer is clear** — included vs. excluded, stated plainly, no disclaimer wall.
 3. **Privacy and account-deletion entry points exist** — reachable from the entry screen and from
    status.

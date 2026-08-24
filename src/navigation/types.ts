@@ -8,6 +8,7 @@ import type { RouteName } from './routes';
  * call site instead of a silent `undefined`.
  */
 export type RootStackParamList = {
+  Chat: undefined;
   Welcome: undefined;
   AccountConsent: undefined;
   SellerDiscovery: undefined;
