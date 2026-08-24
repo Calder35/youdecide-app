@@ -1,4 +1,5 @@
 import type { ApiClient } from './client';
+import { CHAT_TIMEOUT_MS } from './config';
 
 /**
  * The conversation with You Decide AI.
@@ -6,7 +7,14 @@ import type { ApiClient } from './client';
  * Backend contract (POST /v1/chat):
  *
  *   request   { conversation_id?: string, message: string }
- *   response  { conversation_id: string, reply: string, escalate?: ... }
+ *   response  { conversation_id: string, reply: string,
+ *               escalate?: boolean, escalate_kind?: string }
+ *
+ * The live backend sends BOTH: `escalate` as a boolean and `escalate_kind` as
+ * the reason ("none" | "distress" | …). Reading only the boolean loses the
+ * distinction between "someone is having a hard time" and "someone is in
+ * crisis", which is the distinction that matters most — so `escalate_kind`
+ * wins whenever it is present.
  *
  * `escalate` is the ONLY thing that brings a person into the conversation.
  * There is no user-facing "talk to a human" exit — see `EscalationOffer` for
@@ -39,6 +47,8 @@ type RawChatResponse = {
   conversationId?: string;
   reply?: string;
   escalate?: unknown;
+  escalate_kind?: unknown;
+  escalationKind?: unknown;
   escalation_note?: string;
   escalationNote?: string;
 };
@@ -95,14 +105,23 @@ export async function sendChatMessage(
     method: 'POST',
     path: '/v1/chat',
     body,
+    timeoutMs: CHAT_TIMEOUT_MS,
     // The conversation is not tied to a seller account — discovery happens
     // before there is any account to tie it to. That is the point.
   });
 
+  // `escalate_kind` is the specific signal; `escalate` is the boolean beside
+  // it. Prefer the kind, fall back to the boolean.
+  const rawKind = raw.escalate_kind ?? raw.escalationKind;
+  const escalate =
+    rawKind !== undefined && rawKind !== null
+      ? normalizeEscalation(rawKind)
+      : normalizeEscalation(raw.escalate);
+
   return {
     conversationId: raw.conversation_id ?? raw.conversationId ?? '',
     reply: raw.reply ?? '',
-    escalate: normalizeEscalation(raw.escalate),
+    escalate,
     escalationNote: readEscalationNote(raw.escalate, raw.escalation_note ?? raw.escalationNote),
   };
 }

@@ -21,6 +21,8 @@ export type RequestOptions = {
   /** The acting user id. Omitted only for POST /v1/users, which creates one. */
   actorId?: string;
   signal?: AbortSignal;
+  /** Overrides the client default. The chat endpoint is a model call. */
+  timeoutMs?: number;
 };
 
 export class ApiClient {
@@ -55,7 +57,7 @@ export class ApiClient {
     }
 
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? this.timeoutMs);
     if (options.signal !== undefined) {
       options.signal.addEventListener('abort', () => controller.abort(), { once: true });
     }

@@ -1,5 +1,6 @@
 import { ApiClient } from '../api/client';
 import { normalizeEscalation, readEscalationNote, sendChatMessage } from '../api/chat';
+import { CHAT_TIMEOUT_MS, REQUEST_TIMEOUT_MS } from '../api/config';
 import { OPENING_MESSAGE, echoFragment, newStubConversation, stubReply } from '../api/chatStub';
 
 function clientFor(handler: (path: string, body: unknown) => unknown, status = 200) {
@@ -31,6 +32,52 @@ describe('POST /v1/chat', () => {
 
     await sendChatMessage(client, { conversationId: 'c-1', message: 'more' });
     expect(seen[1].body).toEqual({ conversation_id: 'c-1', message: 'more' });
+  });
+
+  /**
+   * The shape the DEPLOYED backend actually returns, captured from a real
+   * response. It sends the boolean and the kind side by side, and the kind is
+   * the one that carries the meaning.
+   */
+  it('prefers escalate_kind over the escalate boolean', async () => {
+    const { client } = clientFor(() => ({
+      conversation_id: '0c56b47d-efcb-45db-a424-e4d8a1a0faee',
+      reply: "First — I'm sorry about your mother.",
+      escalate: true,
+      escalate_kind: 'distress',
+    }));
+
+    const reply = await sendChatMessage(client, { conversationId: null, message: 'hi' });
+    // Reading only the boolean would have made this 'support' and quietly lost
+    // the difference between a hard day and a crisis.
+    expect(reply.escalate).toBe('distress');
+    expect(reply.conversationId).toBe('0c56b47d-efcb-45db-a424-e4d8a1a0faee');
+  });
+
+  it('reads escalate_kind "none" as nobody needed, even beside escalate false', async () => {
+    const { client } = clientFor(() => ({
+      conversation_id: 'c-9',
+      reply: 'Tell me about her.',
+      escalate: false,
+      escalate_kind: 'none',
+    }));
+    expect((await sendChatMessage(client, { conversationId: null, message: 'hi' })).escalate).toBe(
+      'none',
+    );
+  });
+
+  it('still works against a backend that sends only the boolean', async () => {
+    const { client } = clientFor(() => ({ conversation_id: 'c-8', reply: 'ok', escalate: true }));
+    expect((await sendChatMessage(client, { conversationId: null, message: 'hi' })).escalate).toBe(
+      'support',
+    );
+  });
+
+  it('gives the model call a longer budget than an ordinary request', async () => {
+    // A reply measured at 12s against the live backend would have been cut off
+    // by the 10s default.
+    expect(CHAT_TIMEOUT_MS).toBeGreaterThanOrEqual(30_000);
+    expect(CHAT_TIMEOUT_MS).toBeGreaterThan(REQUEST_TIMEOUT_MS);
   });
 
   it('reads the reply and the escalation together', async () => {
@@ -175,5 +222,27 @@ describe('the local stub, until the endpoint exists', () => {
       'We are facing foreclosure and I do not want to live anymore',
     );
     expect(result.reply.escalate).toBe('distress');
+  });
+});
+
+/**
+ * Behaviour observed against the DEPLOYED backend, kept as a regression guard.
+ * These are not hypothetical shapes — each was returned by the live service.
+ */
+describe('what the live backend actually does on a bad day', () => {
+  it('reports an empty reply rather than passing it through', async () => {
+    // Observed on a continuation turn: HTTP 200, escalate false, reply "".
+    const { client } = clientFor(() => ({
+      conversation_id: '2017fffe-c910-4006-a7df-45f9225b662f',
+      reply: '',
+      escalate: false,
+      escalate_kind: 'none',
+    }));
+
+    const reply = await sendChatMessage(client, { conversationId: 'c', message: 'Tell me more.' });
+    // The client surfaces it faithfully; ChatSession is what refuses to render
+    // it as a blank bubble.
+    expect(reply.reply).toBe('');
+    expect(reply.escalate).toBe('none');
   });
 });

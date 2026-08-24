@@ -1,4 +1,10 @@
-import { ProductionHostRefused, assertTestBaseUrl, isTestHost, resolveApiConfig } from '../api/config';
+import {
+  ProductionHostRefused,
+  assertTestBaseUrl,
+  isAllowedDeployment,
+  isTestHost,
+  resolveApiConfig,
+} from '../api/config';
 
 /**
  * The "no production side effects" non-negotiable, as a test.
@@ -23,6 +29,23 @@ describe('where the app is allowed to send things', () => {
     expect(isTestHost('test.youdecide.ai')).toBe(true);
     expect(isTestHost('dev.youdecide.ai')).toBe(true);
     expect(isTestHost('staging.youdecide.ai')).toBe(true);
+  });
+
+  it('accepts a deployment that has been named explicitly', () => {
+    const railway = 'web-production-e36a6.up.railway.app';
+    expect(isAllowedDeployment(railway)).toBe(true);
+    expect(assertTestBaseUrl(`https://${railway}`)).toBe(`https://${railway}`);
+  });
+
+  it('allows the named host EXACTLY, never by suffix or sibling', () => {
+    // The allowlist is not a wildcard: a neighbouring Railway app, or a
+    // lookalike that merely ends with the allowed name, stays refused.
+    expect(isAllowedDeployment('other-app.up.railway.app')).toBe(false);
+    expect(isAllowedDeployment('up.railway.app')).toBe(false);
+    expect(isAllowedDeployment('evil-web-production-e36a6.up.railway.app')).toBe(false);
+    expect(() => assertTestBaseUrl('https://other-app.up.railway.app')).toThrow(
+      ProductionHostRefused,
+    );
   });
 
   it('refuses anything that could be production', () => {

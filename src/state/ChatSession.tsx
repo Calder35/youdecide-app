@@ -112,6 +112,17 @@ export function ChatSessionProvider({
           reply = stub.reply;
         }
 
+        // An EMPTY reply is a real thing the live backend returns — observed
+        // on continuation turns against the deployed service. Rendering it
+        // would put a blank bubble on screen and leave someone staring at
+        // nothing, which is worse than saying the truth and offering a retry.
+        if (reply.reply.trim().length === 0) {
+          setError(
+            'That reply came back empty — it is a problem on our side, not something you did. Try sending it again.',
+          );
+          return;
+        }
+
         setTurns((current) => [
           ...current,
           {
