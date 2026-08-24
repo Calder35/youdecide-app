@@ -137,16 +137,13 @@ describe('a person arrives only when the AI decides one is needed', () => {
     expect(screen.getByText(/A licensed teammate can take this step/)).toBeOnTheScreen();
   });
 
-  it('keeps safety copy in its own notice, away from the handoff card', async () => {
+  it('renders no card of any kind for distress — this product has no crisis UI', async () => {
     await renderApp();
     await sayToAi('Honestly I do not want to live anymore.');
-    await waitFor(() => expect(onTop(SAFETY_NOTICE_TEST_ID)).toBeOnTheScreen());
+    await waitFor(() => expect(screen.getAllByTestId('turn-ai').length).toBeGreaterThan(1));
 
-    // Its own notice, not the professional handoff card.
+    expect(screen.queryByTestId(SAFETY_NOTICE_TEST_ID)).toBeNull();
     expect(screen.queryByTestId(ESCALATION_TEST_ID)).toBeNull();
-    // Nothing transactional appears beside it.
-    expect(screen.queryByText(/1%/)).toBeNull();
-    expect(screen.queryByText(/listing/i)).toBeNull();
   });
 
   it('leads to the handoff, which still says what would be shared', async () => {

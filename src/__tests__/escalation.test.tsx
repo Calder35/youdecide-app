@@ -140,18 +140,22 @@ describe('the only card in the housing flow is a professional handoff', () => {
   });
 });
 
-describe('safety copy is separate, and out of the housing flow', () => {
-  it('appears only when the backend explicitly says distress', async () => {
+describe('distress renders nothing at all in this product', () => {
+  it('shows the reply and no card, even when the backend says distress', async () => {
     const client = backendSaying([
-      { reply: 'I want to stop and say something.', escalate: true, escalate_kind: 'distress' },
+      { reply: 'Tell me more about what is going on.', escalate: true, escalate_kind: 'distress' },
     ]);
     await renderApp({ client });
 
     await sayToAi('I do not want to be here anymore.');
 
-    await waitFor(() => expect(onTop(SAFETY_NOTICE_TEST_ID)).toBeOnTheScreen());
-    // It is its own notice, not the handoff card.
+    // The conversational reply still reaches the person. Only the card is gone.
+    await waitFor(() =>
+      expect(screen.getByText('Tell me more about what is going on.')).toBeOnTheScreen(),
+    );
     expect(screen.queryByTestId(ESCALATION_TEST_ID)).toBeNull();
+    expect(screen.queryByTestId(SAFETY_NOTICE_TEST_ID)).toBeNull();
+    // See crisisContent.test.tsx for the exhaustive version of this rule.
   });
 });
 

@@ -7,25 +7,36 @@ import { AppText } from './AppText';
 export const SAFETY_NOTICE_TEST_ID = 'safety-notice';
 
 /**
- * Self-harm safety copy. Deliberately separate, and deliberately unreachable
- * from the housing conversation.
+ * ⛔️ DORMANT — NOT MOUNTED ANYWHERE. DO NOT WIRE THIS UP WITHOUT A DECISION.
  *
- * WHY IT IS ITS OWN FILE. This used to be one branch inside the handoff card,
- * which meant every widening of "someone should help" dragged a suicide hotline
- * along with it — and it did: a person saying they were behind on their
- * mortgage was shown a crisis card. Splitting it means the housing flow cannot
- * reach this by accident, because the housing flow does not render an emotional
- * card at all.
+ * Self-harm safety copy, kept in the repo but deliberately disconnected from
+ * the app. Nothing imports it, so no input, no backend response, and no
+ * `escalate_kind` can cause it to render.
  *
- * WHEN IT SHOWS. Only when the backend explicitly returns
- * `escalate_kind: "distress"`, which the backend gates to a narrow path that
- * financial and housing situations do not take. Financial hardship — arrears,
- * foreclosure, an unaffordable payment — is ordinary business for this product
- * and is handled conversationally with no card of any kind.
+ * WHY IT IS OFF. This is a housing product. A live test showed the cost of
+ * mixing the two registers: the backend returned `distress` for someone saying
+ * they were three months behind on their mortgage, and the app answered a
+ * financial question with a suicide hotline. Financial hardship — arrears,
+ * foreclosure, an unaffordable payment — is the ordinary reason people sell a
+ * house, and this product handles it as business. The product decision is that
+ * crisis content does not belong in it at all, rather than being gated and
+ * hoped about.
  *
- * ⚠️ REVIEW BEFORE REAL USERS. This is safety copy written by an engineer. It
- * names a US resource and has not been reviewed or localised. If the gate ever
- * widens, this text needs a person qualified to write it.
+ * WHAT THAT MEANS TODAY. `escalate_kind: "distress"` renders NOTHING in the
+ * app. The conversational reply from the backend still reaches the person —
+ * only the card is gone. `crisisContent.test.tsx` asserts that no path can
+ * mount this.
+ *
+ * IF IT IS EVER TURNED BACK ON, it needs a person qualified to write safety
+ * copy, a licensed review, and localisation beyond the US resource named
+ * below. An engineer wrote this text; that was fine for a placeholder and is
+ * not fine for something a person in danger would read.
+ *
+ * WHY IT IS ITS OWN FILE RATHER THAN DELETED. It was once a branch inside the
+ * handoff card, which is how it reached a mortgage conversation in the first
+ * place. Keeping it separate and unmounted preserves the work without leaving
+ * a branch that a future widening of "someone should help" can fall into.
+ *
  */
 export function SafetyNotice({ kind }: { kind: EscalationKind }) {
   if (kind !== 'distress') return null;

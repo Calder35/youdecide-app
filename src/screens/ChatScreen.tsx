@@ -13,7 +13,6 @@ import { AppText } from '../components/AppText';
 import { ChatBubble } from '../components/ChatBubble';
 import { ChatComposer } from '../components/ChatComposer';
 import { EscalationOffer } from '../components/EscalationOffer';
-import { SafetyNotice } from '../components/SafetyNotice';
 import { InlineError } from '../components/Errors';
 import { MicButton, VoiceStage } from '../components/MicButton';
 import { TypingIndicator } from '../components/TypingIndicator';
@@ -37,6 +36,9 @@ export const CHAT_SCREEN_TEST_ID = 'chat-screen';
  *   - "list your home", or any framing of the person as a seller
  *   - a step counter, progress bar, or anything that reads as a form
  *   - a standing "talk to a human" button
+ *   - any crisis, suicide-prevention or emotional-support content. `SafetyNotice`
+ *     exists in the repo but is deliberately NOT mounted here — see that file.
+ *     `escalate_kind: "distress"` renders nothing at all in this product.
  *
  * A person arrives here as someone with a situation, not as a lead partway
  * through an intake. Everything the app used to open with is still in the
@@ -85,7 +87,6 @@ export function ChatScreen({ navigation }: RootStackScreenProps<'Chat'>) {
 
             {thinking && <TypingIndicator />}
 
-            <SafetyNotice kind={escalation} />
             <EscalationOffer kind={escalation} note={escalationNote} />
 
             {error !== null && (
