@@ -30,3 +30,51 @@ jest.mock('react-native/Libraries/LogBox/LogBoxNotificationContainer', () => ({
   default: () => null,
   _LogBoxNotificationContainer: () => null,
 }));
+
+// expo-audio and expo-file-system are native modules. They are stubbed so the
+// screen tests can render the mic; the voice PIPELINE is tested through
+// `voiceTurn.ts`, which takes its recorder, player, and provider as arguments
+// precisely so it does not need a device.
+jest.mock('expo-audio', () => ({
+  AudioModule: {
+    requestRecordingPermissionsAsync: jest.fn(async () => ({ granted: true })),
+    getRecordingPermissionsAsync: jest.fn(async () => ({ granted: true })),
+  },
+  RecordingPresets: { HIGH_QUALITY: {}, LOW_QUALITY: {} },
+  setAudioModeAsync: jest.fn(async () => undefined),
+  useAudioRecorder: jest.fn(() => ({
+    record: jest.fn(),
+    stop: jest.fn(async () => undefined),
+    prepareToRecordAsync: jest.fn(async () => undefined),
+    uri: 'file:///tmp/recording.m4a',
+  })),
+  useAudioRecorderState: jest.fn(() => ({ isRecording: false })),
+  createAudioPlayer: jest.fn(() => ({
+    play: jest.fn(),
+    remove: jest.fn(),
+    addListener: jest.fn(() => ({ remove: jest.fn() })),
+  })),
+}));
+
+jest.mock('expo-file-system', () => {
+  class FakeFile {
+    uri = 'file:///tmp/voice/reply.mp3';
+    exists = false;
+    create() {}
+    delete() {}
+    write() {}
+    async base64() {
+      return 'ZmFrZS1hdWRpbw==';
+    }
+  }
+  class FakeDirectory {
+    exists = true;
+    create() {}
+    delete() {}
+  }
+  return {
+    File: FakeFile,
+    Directory: FakeDirectory,
+    Paths: { cache: 'file:///tmp/cache' },
+  };
+});

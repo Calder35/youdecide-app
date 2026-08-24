@@ -18,9 +18,12 @@ export const COMPOSER_SEND_TEST_ID = 'chat-send';
 export function ChatComposer({
   onSend,
   disabled = false,
+  /** Rendered beside the input — the mic. Voice is additive, never a swap. */
+  accessory,
 }: {
   onSend: (message: string) => void;
   disabled?: boolean;
+  accessory?: React.ReactNode;
 }) {
   const [draft, setDraft] = useState('');
   const canSend = draft.trim().length > 0 && !disabled;
@@ -45,6 +48,7 @@ export function ChatComposer({
         testID={COMPOSER_INPUT_TEST_ID}
         style={styles.input}
       />
+      {accessory}
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Send"

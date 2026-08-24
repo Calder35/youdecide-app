@@ -14,6 +14,7 @@ import { ChatBubble } from '../components/ChatBubble';
 import { ChatComposer } from '../components/ChatComposer';
 import { EscalationOffer } from '../components/EscalationOffer';
 import { InlineError } from '../components/Errors';
+import { MicButton, VoiceStage } from '../components/MicButton';
 import { TypingIndicator } from '../components/TypingIndicator';
 import { ROUTES } from '../navigation/routes';
 import type { RootStackScreenProps } from '../navigation/types';
@@ -111,7 +112,8 @@ export function ChatScreen({ navigation }: RootStackScreenProps<'Chat'>) {
           </View>
         </ScrollView>
 
-        <ChatComposer onSend={onSend} disabled={thinking} />
+        <VoiceStage />
+        <ChatComposer onSend={onSend} disabled={thinking} accessory={<MicButton />} />
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

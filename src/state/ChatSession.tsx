@@ -44,8 +44,9 @@ export type ChatSessionValue = {
   thinking: boolean;
   /** A send that failed, in the person's language. */
   error: string | null;
-  send: (message: string) => Promise<void>;
-  retry: () => Promise<void>;
+  /** Resolves with the AI's reply text, or null if there was not one. */
+  send: (message: string) => Promise<string | null>;
+  retry: () => Promise<string | null>;
   /** The highest escalation the conversation has reached, if any. */
   escalation: EscalationKind;
   escalationNote: string | null;
@@ -91,7 +92,7 @@ export function ChatSessionProvider({
   const lastMessageRef = useRef<string | null>(null);
 
   const deliver = useCallback(
-    async (message: string) => {
+    async (message: string): Promise<string | null> => {
       setThinking(true);
       setError(null);
 
@@ -120,7 +121,7 @@ export function ChatSessionProvider({
           setError(
             'That reply came back empty — it is a problem on our side, not something you did. Try sending it again.',
           );
-          return;
+          return null;
         }
 
         setTurns((current) => [
@@ -133,8 +134,11 @@ export function ChatSessionProvider({
             escalationNote: reply.escalationNote,
           },
         ]);
+
+        return reply.reply;
       } catch (thrown) {
         setError(toApiError(thrown).sellerMessage);
+        return null;
       } finally {
         setThinking(false);
       }
@@ -143,21 +147,21 @@ export function ChatSessionProvider({
   );
 
   const send = useCallback(
-    async (message: string) => {
+    async (message: string): Promise<string | null> => {
       const trimmed = message.trim();
-      if (trimmed.length === 0) return;
+      if (trimmed.length === 0) return null;
 
       lastMessageRef.current = trimmed;
       setTurns((current) => [...current, { id: nextId('you'), role: 'you', text: trimmed }]);
-      await deliver(trimmed);
+      return deliver(trimmed);
     },
     [deliver],
   );
 
-  const retry = useCallback(async () => {
+  const retry = useCallback(async (): Promise<string | null> => {
     const last = lastMessageRef.current;
-    if (last === null) return;
-    await deliver(last);
+    if (last === null) return null;
+    return deliver(last);
   }, [deliver]);
 
   const value = useMemo<ChatSessionValue>(() => {

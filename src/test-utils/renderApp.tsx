@@ -7,6 +7,7 @@ import { RootNavigator } from '../navigation/RootNavigator';
 import type { RootStackParamList } from '../navigation/types';
 import { ChatSessionProvider } from '../state/ChatSession';
 import { SellerSessionProvider } from '../state/SellerSession';
+import { VoiceSessionProvider, type VoiceDependencies } from '../state/VoiceSession';
 
 /**
  * Renders the real app — real navigator, real stores — so tests exercise what a
@@ -27,6 +28,8 @@ export type RenderOptions = {
    * `Welcome` so they can exercise that flow without walking a conversation.
    */
   initialRouteName?: keyof RootStackParamList;
+  /** Fake mic/player/provider. Without these, voice reports unavailable. */
+  voice?: VoiceDependencies;
 };
 
 export async function renderApp(options: RenderOptions = {}) {
@@ -35,9 +38,11 @@ export async function renderApp(options: RenderOptions = {}) {
       <SellerSessionProvider client={options.client}>
         {/* No typing delay: tests should not wait on a simulated pause. */}
         <ChatSessionProvider client={options.client} thinkingDelayMs={0}>
-          <NavigationContainer>
-            <RootNavigator initialRouteName={options.initialRouteName} />
-          </NavigationContainer>
+          <VoiceSessionProvider client={options.client} dependencies={options.voice}>
+            <NavigationContainer>
+              <RootNavigator initialRouteName={options.initialRouteName} />
+            </NavigationContainer>
+          </VoiceSessionProvider>
         </ChatSessionProvider>
       </SellerSessionProvider>
     </SafeAreaProvider>,
