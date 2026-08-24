@@ -352,3 +352,59 @@ describe('the whole turn is logged, not just the capture', () => {
     expect(lines.join('\n')).toMatch(/empty despite a non-empty recording/);
   });
 });
+
+describe('speaking is reliable, or says why it was not', () => {
+  it('speaks on an ordinary turn', async () => {
+    const h = harness({ measureBytes: async () => 48_000 });
+    await runVoiceTurn(AUDIO, h.deps);
+    expect(h.spoken).toHaveLength(1);
+    expect(h.played).toHaveLength(1);
+  });
+
+  /**
+   * Escalation must not suppress the voice. The reply is spoken whatever the
+   * AI decided about bringing a person in — including a crisis reply, which is
+   * the one someone is least able to read calmly off a screen.
+   */
+  it('still speaks when the turn escalates', async () => {
+    for (const reply of [
+      'That sounds really hard. There is someone here who can help.',
+      'I want to stop and say something, because it matters more than the rest.',
+    ]) {
+      const h = harness({
+        measureBytes: async () => 48_000,
+        sendToBrain: jest.fn(async () => reply),
+      });
+      await runVoiceTurn(AUDIO, h.deps);
+      expect(h.spoken).toEqual([reply]);
+    }
+  });
+
+  it('retries once before giving up on speaking', async () => {
+    const h = harness({ measureBytes: async () => 48_000 });
+    (h.provider.synthesize as jest.Mock)
+      .mockRejectedValueOnce(new Error('transient 503'))
+      .mockResolvedValueOnce({ uri: 'file:///tmp/reply.mp3', mimeType: 'audio/mpeg' });
+
+    await runVoiceTurn(AUDIO, h.deps);
+
+    // A single blip between the phone and the speech service should not turn a
+    // warm reply into a wall of text.
+    expect(h.provider.synthesize).toHaveBeenCalledTimes(2);
+    expect(h.played).toEqual(['file:///tmp/reply.mp3']);
+    expect(h.errors).toEqual([]);
+  });
+
+  it('logs the retry, and the reason, when speaking finally fails', async () => {
+    const lines: string[] = [];
+    const h = harness({ measureBytes: async () => 48_000, log: (line: string) => lines.push(line) });
+    (h.provider.synthesize as jest.Mock).mockRejectedValue(new Error('tts really down'));
+
+    await runVoiceTurn(AUDIO, h.deps);
+
+    expect(h.provider.synthesize).toHaveBeenCalledTimes(2);
+    expect(lines.join('\n')).toMatch(/retrying once/);
+    expect(lines.join('\n')).toMatch(/speak failed — .*tts really down/);
+    expect(h.errors[0].kind).toBe('speakFailed');
+  });
+});

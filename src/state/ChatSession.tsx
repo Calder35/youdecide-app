@@ -165,23 +165,22 @@ export function ChatSessionProvider({
   }, [deliver]);
 
   const value = useMemo<ChatSessionValue>(() => {
-    // The most serious signal the conversation has produced. Once the AI has
-    // decided a person is needed, that does not silently expire a turn later.
-    const rank: Record<EscalationKind, number> = {
-      none: 0,
-      licensed: 1,
-      support: 2,
-      distress: 3,
-    };
-    let escalation: EscalationKind = 'none';
-    let escalationNote: string | null = null;
-    for (const turn of turns) {
-      const kind = turn.escalate ?? 'none';
-      if (rank[kind] >= rank[escalation] && kind !== 'none') {
-        escalation = kind;
-        escalationNote = turn.escalationNote ?? escalationNote;
-      }
-    }
+    /**
+     * The escalation of the LATEST AI turn — not the worst one ever seen.
+     *
+     * This used to be sticky: once any turn escalated, the offer stayed for the
+     * rest of the conversation. That was wrong, and a live test showed exactly
+     * how wrong. The backend fired `distress` on someone saying they were
+     * behind on their mortgage — a hard financial situation, not a crisis — and
+     * because the state was sticky, a crisis card with a suicide hotline sat
+     * over the rest of that person's conversation with no way to clear it.
+     *
+     * A false positive should cost one turn, not the session. When the current
+     * turn says `none`, the screen is a clean conversation again.
+     */
+    const latestAiTurn = [...turns].reverse().find((turn) => turn.role === 'ai');
+    const escalation: EscalationKind = latestAiTurn?.escalate ?? 'none';
+    const escalationNote = escalation === 'none' ? null : (latestAiTurn?.escalationNote ?? null);
 
     return {
       turns,

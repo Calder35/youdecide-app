@@ -125,13 +125,19 @@ export async function runVoiceTurn(
   // the turn still counts as a success.
   try {
     onStage('speaking');
-    const speech = await provider.synthesize(reply);
+    // ONE RETRY. Speaking is the part of the experience people came for, and a
+    // single transient blip between the phone and the speech service should not
+    // silently turn a warm reply into a wall of text.
+    const speech = await withOneRetry(
+      () => provider.synthesize(reply),
+      (error) => deps.log?.(`voice: synthesize failed, retrying once — ${describe(error)}`),
+    );
     deps.log?.(`voice: speaking ${reply.length} chars`);
     await play(speech.uri);
     deps.log?.('voice: turn complete');
   } catch (thrown) {
     const failure = asVoiceError(thrown, 'speakFailed');
-    deps.log?.(`voice: speak failed — ${String(failure.cause ?? failure.message)}`);
+    deps.log?.(`voice: speak failed — ${describe(failure.cause ?? failure)}`);
     onError(failure);
   } finally {
     onStage('idle');
@@ -142,4 +148,24 @@ export async function runVoiceTurn(
 
 function asVoiceError(thrown: unknown, fallback: Parameters<typeof voiceError>[0]): VoiceError {
   return thrown instanceof VoiceError ? thrown : voiceError(fallback, thrown);
+}
+
+/** Runs `attempt`, and on failure runs it once more. */
+async function withOneRetry<T>(
+  attempt: () => Promise<T>,
+  onRetry: (error: unknown) => void,
+): Promise<T> {
+  try {
+    return await attempt();
+  } catch (thrown) {
+    onRetry(thrown);
+    return attempt();
+  }
+}
+
+/** A readable one-liner for a log, whatever was thrown. */
+function describe(thrown: unknown): string {
+  if (thrown instanceof VoiceError) return `${thrown.kind}: ${thrown.message}`;
+  if (thrown instanceof Error) return thrown.message;
+  return String(thrown);
 }

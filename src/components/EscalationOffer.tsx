@@ -10,6 +10,8 @@ import { AppText } from './AppText';
 import { Button } from './Button';
 
 export const ESCALATION_TEST_ID = 'escalation-offer';
+/** Present only on the crisis card. Asserted against in tests. */
+export const CRISIS_RESOURCE_TEST_ID = 'crisis-resources';
 
 /**
  * The only way a person enters the conversation.
@@ -23,8 +25,20 @@ export const ESCALATION_TEST_ID = 'escalation-offer';
  * driven by the backend's `escalate` field — and it is phrased as accepting
  * something the AI offered, never as an escape hatch from it.
  *
- * `distress` is the exception to the subtlety: when someone is struggling, the
- * offer is clear and immediate, and nothing about property appears next to it.
+ * TWO KINDS OF CARD, AND THEY ARE NOT THE SAME CARD.
+ *
+ *   support / licensed — a quiet offer. Someone has a hard situation or a
+ *     question that needs a licensee. It is a note in the conversation, not an
+ *     alarm, and it says nothing about crisis.
+ *
+ *   distress — a crisis card, with a crisis line. Loud on purpose, announced
+ *     as an alert, and nothing transactional beside it.
+ *
+ * These were merged once, which meant someone saying they were behind on their
+ * mortgage got a suicide-hotline card. That is not a cosmetic mistake: it tells
+ * a person in financial trouble that we think they are in danger, and it makes
+ * the real crisis card meaningless by wearing it out. `escalation.test.tsx`
+ * holds them apart.
  */
 export function EscalationOffer({
   kind,
@@ -38,30 +52,35 @@ export function EscalationOffer({
   if (kind === 'none') return null;
 
   const copy = COPY[kind];
+  // The ONLY branch that shows crisis copy. Everything else is a quiet offer.
+  const isCrisis = kind === 'distress';
 
   return (
     <View
-      style={[styles.container, kind === 'distress' && styles.distress]}
-      accessibilityRole={kind === 'distress' ? 'alert' : 'summary'}
+      style={[styles.container, isCrisis ? styles.distress : styles.quiet]}
+      accessibilityRole={isCrisis ? 'alert' : 'summary'}
       testID={ESCALATION_TEST_ID}
     >
-      <AppText role="bodyStrong" tone={kind === 'distress' ? 'primary' : 'human'}>
+      <AppText role="bodyStrong" tone={isCrisis ? 'primary' : 'human'}>
         {copy.title}
       </AppText>
       <AppText role="body" tone="secondary">
         {note ?? copy.body}
       </AppText>
-      {kind === 'distress' && (
-        // NOTE: crisis-resource copy needs review before this reaches real
-        // users, and localising beyond the US. Kept general on purpose.
-        <AppText role="caption" tone="secondary">
+      {isCrisis && (
+        // CRISIS RESOURCES, distress ONLY. A support or licensed handoff must
+        // never render this — see the comment at the top of the file.
+        //
+        // NOTE: this copy needs review before real users, and localising beyond
+        // the US. Kept general on purpose.
+        <AppText role="caption" tone="secondary" testID={CRISIS_RESOURCE_TEST_ID}>
           If you are in immediate danger, please contact your local emergency services. In the US
           you can call or text 988 to reach the Suicide &amp; Crisis Lifeline, any time.
         </AppText>
       )}
       <Button
         label={copy.action}
-        variant={kind === 'distress' ? 'primary' : 'human'}
+        variant={isCrisis ? 'primary' : 'secondary'}
         testID="escalation-accept"
         accessibilityHint="Shows what would be shared before anything is sent."
         onPress={() => navigation.navigate(ROUTES.GetHuman, { from: ROUTES.Chat })}
@@ -100,5 +119,13 @@ const styles = StyleSheet.create({
   },
   distress: {
     borderWidth: 2,
+  },
+  /**
+   * A support or licensed offer is a note, not an alarm: the surface of the
+   * conversation rather than the warm accent, so it does not read as urgent.
+   */
+  quiet: {
+    backgroundColor: theme.color.surface,
+    borderColor: theme.color.border,
   },
 });
