@@ -95,7 +95,9 @@ describe('speaking a turn', () => {
     await tapSpeakTap();
 
     await waitFor(() => expect(voice.provider.synthesize).toHaveBeenCalled());
-    expect(voice.played).toEqual(['file:///tmp/reply.mp3']);
+    // A long reply is spoken a sentence at a time, so one play per chunk.
+    expect(voice.played.length).toBeGreaterThan(0);
+    expect(voice.played.length).toBe((voice.provider.synthesize as jest.Mock).mock.calls.length);
   });
 
   it('keeps the words on screen even when speaking them fails', async () => {

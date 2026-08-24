@@ -382,7 +382,11 @@ describe('speaking is reliable, or says why it was not', () => {
   });
 
   it('retries once before giving up on speaking', async () => {
-    const h = harness({ measureBytes: async () => 48_000 });
+    const h = harness({
+      measureBytes: async () => 48_000,
+      // A short reply, so this is one chunk and the retry count is unambiguous.
+      sendToBrain: jest.fn(async () => 'Tell me more.'),
+    });
     (h.provider.synthesize as jest.Mock)
       .mockRejectedValueOnce(new Error('transient 503'))
       .mockResolvedValueOnce({ uri: 'file:///tmp/reply.mp3', mimeType: 'audio/mpeg' });
@@ -405,7 +409,7 @@ describe('speaking is reliable, or says why it was not', () => {
 
     expect(h.provider.synthesize).toHaveBeenCalledTimes(2);
     expect(lines.join('\n')).toMatch(/retrying once/);
-    expect(lines.join('\n')).toMatch(/speak failed — .*tts really down/);
+    expect(lines.join('\n')).toMatch(/speak failed on chunk 1\/1 after 0 spoken — .*tts really down/);
     expect(h.errors[0].kind).toBe('speakFailed');
   });
 });

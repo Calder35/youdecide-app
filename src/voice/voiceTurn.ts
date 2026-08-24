@@ -1,5 +1,6 @@
 import { VoiceError, voiceError, type RecordedAudio, type VoiceProvider } from './types';
 import { MIN_AUDIO_BYTES, MIN_RECORDING_MS } from './types';
+import { splitForSpeech } from './speechChunks';
 
 /**
  * One spoken turn, as a pure function of its dependencies.
@@ -49,7 +50,7 @@ export async function runVoiceTurn(
   audio: RecordedAudio,
   deps: VoiceTurnDeps,
 ): Promise<string | null> {
-  const { provider, sendToBrain, play, onStage, onTranscript, onError } = deps;
+  const { provider, sendToBrain, onStage, onTranscript, onError } = deps;
 
   if (!provider.isAvailable) {
     onError(voiceError('unavailable'));
@@ -123,27 +124,81 @@ export async function runVoiceTurn(
   // From here, the person's words are safely in the conversation. Anything that
   // fails below costs them audio, not meaning — so it is reported gently and
   // the turn still counts as a success.
-  try {
-    onStage('speaking');
-    // ONE RETRY. Speaking is the part of the experience people came for, and a
-    // single transient blip between the phone and the speech service should not
-    // silently turn a warm reply into a wall of text.
-    const speech = await withOneRetry(
-      () => provider.synthesize(reply),
-      (error) => deps.log?.(`voice: synthesize failed, retrying once — ${describe(error)}`),
-    );
-    deps.log?.(`voice: speaking ${reply.length} chars`);
-    await play(speech.uri);
-    deps.log?.('voice: turn complete');
-  } catch (thrown) {
-    const failure = asVoiceError(thrown, 'speakFailed');
-    deps.log?.(`voice: speak failed — ${describe(failure.cause ?? failure)}`);
-    onError(failure);
-  } finally {
-    onStage('idle');
-  }
+  onStage('speaking');
+  await speakInChunks(reply, deps);
+  onStage('idle');
 
   return transcript;
+}
+
+/**
+ * Speaks a reply a sentence at a time, synthesising ahead while it plays.
+ *
+ * The pipeline is the point. Chunk N+1 is requested BEFORE chunk N starts
+ * playing, so the network work happens during the audio rather than before it.
+ * A person hears the first sentence in about a second instead of waiting out
+ * the whole reply — 37 seconds, at the top end we measured.
+ */
+async function speakInChunks(reply: string, deps: VoiceTurnDeps): Promise<void> {
+  const { provider, play, onError } = deps;
+  const chunks = splitForSpeech(reply);
+
+  deps.log?.(`voice: speaking ${reply.length} chars in ${chunks.length} chunk(s)`);
+
+  /** One chunk, with a single retry — a blip should cost nothing visible. */
+  const synthesize = (chunk: string) =>
+    withOneRetry(
+      () => provider.synthesize(chunk),
+      (error) => deps.log?.(`voice: synthesize failed, retrying once — ${describe(error)}`),
+    );
+
+  let pending: Promise<{ uri: string }> | null = synthesize(chunks[0]);
+  let spoken = 0;
+
+  for (let index = 0; index < chunks.length; index += 1) {
+    const current = pending;
+    if (current === null) break;
+
+    let audio;
+    try {
+      audio = await current;
+    } catch (thrown) {
+      report(thrown, index);
+      return;
+    }
+
+    // Kick off the NEXT synthesis before playing this one, so the request and
+    // the audio overlap. Its rejection is caught where it is awaited.
+    pending =
+      index + 1 < chunks.length
+        ? synthesize(chunks[index + 1]).catch((thrown: unknown) => {
+            throw thrown;
+          })
+        : null;
+
+    try {
+      await play(audio.uri);
+      spoken += 1;
+    } catch (thrown) {
+      report(thrown, index);
+      return;
+    }
+  }
+
+  deps.log?.('voice: turn complete');
+
+  function report(thrown: unknown, index: number) {
+    // Anything already spoken is worth distinguishing from nothing spoken: one
+    // is a reply that stopped early, the other is a reply that never started.
+    const kind = spoken > 0 ? 'speakCutShort' : 'speakFailed';
+    const failure = asVoiceError(thrown, kind);
+    deps.log?.(
+      `voice: speak failed on chunk ${index + 1}/${chunks.length} after ${spoken} spoken — ${describe(
+        failure.cause ?? failure,
+      )}`,
+    );
+    onError(failure);
+  }
 }
 
 function asVoiceError(thrown: unknown, fallback: Parameters<typeof voiceError>[0]): VoiceError {

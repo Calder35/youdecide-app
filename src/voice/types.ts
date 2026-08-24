@@ -63,6 +63,8 @@ export type VoiceFailureKind =
   | 'noSpeech'
   | 'transcribeFailed'
   | 'speakFailed'
+  /** Some of the reply was spoken, then it stopped. */
+  | 'speakCutShort'
   | 'recordFailed';
 
 export class VoiceError extends Error {
@@ -102,6 +104,7 @@ export const VOICE_MESSAGE: Record<VoiceFailureKind, string> = {
   noSpeech: `I could not make out any words in that.${TYPE_INSTEAD}`,
   transcribeFailed: `I could not make out what you said — that is a problem on our end, not yours.${TYPE_INSTEAD}`,
   speakFailed: 'I could not read that reply out loud, but it is on screen above.',
+  speakCutShort: 'I got partway through reading that out — the rest is on screen above.',
   recordFailed: `The microphone did not start.${TYPE_INSTEAD}`,
 };
 
