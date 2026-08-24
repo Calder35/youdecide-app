@@ -29,6 +29,8 @@ type SpeakResponse = { audio_base64?: string; audioBase64?: string; mime_type?: 
 export type FileBridge = {
   readAsBase64: (uri: string) => Promise<string>;
   writeBase64: (base64: string, mimeType: string) => Promise<string>;
+  /** Bytes on disk. Used to catch a recording that captured nothing. */
+  sizeOf?: (uri: string) => Promise<number>;
 };
 
 /** Voice calls carry audio and wait on a model. They need room. */
@@ -51,6 +53,13 @@ export class BackendVoiceProvider implements VoiceProvider {
 
   async transcribe(audio: RecordedAudio): Promise<string> {
     const base64 = await this.files.readAsBase64(audio.uri);
+
+    // Never POST an empty buffer. If the read produced nothing, the recording
+    // is the problem, and saying so beats waiting for a transcription service
+    // to return an empty string we would then misreport.
+    if (base64.length === 0) {
+      throw voiceError('silent');
+    }
 
     const response = await this.client.request<TranscribeResponse>({
       method: 'POST',

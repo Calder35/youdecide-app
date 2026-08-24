@@ -32,6 +32,15 @@ export const expoFileBridge: FileBridge = {
     return new File(uri).base64();
   },
 
+  /** Bytes on disk, or 0 if the file is not there. */
+  async sizeOf(uri: string): Promise<number> {
+    try {
+      return new File(uri).info().size ?? 0;
+    } catch {
+      return 0;
+    }
+  },
+
   async writeBase64(base64: string, mimeType: string): Promise<string> {
     // Cache, not documents: spoken replies are disposable. The OS is free to
     // reclaim them, and nothing should be re-listening to yesterday's audio.

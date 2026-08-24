@@ -1,5 +1,5 @@
 import { VoiceError, voiceError, type RecordedAudio, type VoiceProvider } from './types';
-import { MIN_RECORDING_MS } from './types';
+import { MIN_AUDIO_BYTES, MIN_RECORDING_MS } from './types';
 
 /**
  * One spoken turn, as a pure function of its dependencies.
@@ -33,6 +33,10 @@ export type VoiceTurnDeps = {
   /** Shows the transcript in the conversation before the brain answers. */
   onTranscript?: (transcript: string) => void;
   onError: (error: VoiceError) => void;
+  /** Bytes on disk, so a silent capture is caught before it is uploaded. */
+  measureBytes?: (uri: string) => Promise<number>;
+  /** Diagnostics. Duration and size are what tell us what the mic really did. */
+  log?: (message: string) => void;
 };
 
 /**
@@ -54,9 +58,25 @@ export async function runVoiceTurn(
   }
 
   if (audio.durationMs < MIN_RECORDING_MS) {
+    deps.log?.(`voice: too short — ${audio.durationMs}ms`);
     onError(voiceError('tooShort'));
     onStage('idle');
     return null;
+  }
+
+  // VERIFY THE CAPTURE BEFORE SPENDING A REQUEST ON IT. A file that exists but
+  // holds no audio is the failure that made voice look broken: an empty m4a
+  // still has a container header, so "the file is there" proves nothing.
+  if (deps.measureBytes !== undefined) {
+    const bytes = await deps.measureBytes(audio.uri);
+    deps.log?.(`voice: captured ${audio.durationMs}ms, ${bytes} bytes, ${audio.mimeType}`);
+    if (bytes < MIN_AUDIO_BYTES) {
+      onError(voiceError('silent'));
+      onStage('idle');
+      return null;
+    }
+  } else {
+    deps.log?.(`voice: captured ${audio.durationMs}ms, ${audio.mimeType}`);
   }
 
   let transcript: string;

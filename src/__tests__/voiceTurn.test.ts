@@ -8,6 +8,7 @@ import {
   type VoiceProvider,
 } from '../voice/types';
 import { runVoiceTurn, type VoiceTurnStage } from '../voice/voiceTurn';
+import { mimeTypeFor } from '../voice/useMicrophone';
 
 const AUDIO: RecordedAudio = {
   uri: 'file:///tmp/recording.m4a',
@@ -95,7 +96,7 @@ describe('when voice cannot work', () => {
 
     expect(transcript).toBeNull();
     expect(h.errors[0].kind).toBe('tooShort');
-    expect(h.errors[0].personMessage).toMatch(/hold the button while you speak/i);
+    expect(h.errors[0].personMessage).toMatch(/tap the mic, speak, then tap again/i);
     expect(h.deps.provider.transcribe).not.toHaveBeenCalled();
   });
 
@@ -231,5 +232,89 @@ describe('the backend-proxied provider', () => {
       { readAsBase64: jest.fn(), writeBase64: jest.fn() },
     );
     expect(offline.isAvailable).toBe(false);
+  });
+});
+
+/**
+ * Regression guards for the bug that made voice look broken on a real phone.
+ *
+ * Symptom: tapping the mic immediately showed "I could not hear anything in
+ * that." Cause: the mic was press-and-hold, `onPressIn` began an async start
+ * (permission → audio mode → prepare) and `onPressOut` stopped it. A tap
+ * stopped a recording that had never begun — and on the first tap of all, the
+ * permission dialog cancelled the touch, so it could never work.
+ *
+ * Nothing was wrong with the microphone. The app blamed the person's voice.
+ */
+describe('a capture that never happened is not silence', () => {
+  it('tells "recording had not started" apart from "I heard no words"', () => {
+    const didNotStart = voiceError('didNotStart').personMessage;
+    const noSpeech = voiceError('noSpeech').personMessage;
+
+    expect(didNotStart).not.toBe(noSpeech);
+    expect(didNotStart).toMatch(/had not started/i);
+    // It tells the person the interaction, because the interaction is the fix.
+    expect(didNotStart).toMatch(/tap the mic/i);
+  });
+
+  it('tells a blocked microphone apart from a declined one', () => {
+    const blocked = voiceError('permissionBlocked').personMessage;
+    const denied = voiceError('permissionDenied').personMessage;
+
+    expect(blocked).not.toBe(denied);
+    // Blocked can only be fixed in Settings; saying "tap again" would send
+    // someone at a button that can never work.
+    expect(blocked).toMatch(/settings/i);
+    expect(denied).toMatch(/tap the mic again/i);
+  });
+
+  it('never reports a permission problem as the AI failing to hear', () => {
+    for (const kind of ['permissionDenied', 'permissionBlocked', 'didNotStart'] as const) {
+      expect(`${kind}: ${voiceError(kind).personMessage}`).not.toMatch(/could not make out any words/i);
+    }
+  });
+});
+
+describe('verifying the capture before spending a request on it', () => {
+  const MEASURED: RecordedAudio = { ...AUDIO, mimeType: 'audio/m4a' };
+
+  it('refuses to upload a file with no audio in it', async () => {
+    const h = harness({ measureBytes: async () => 384 }); // an empty m4a header
+    const transcript = await runVoiceTurn(MEASURED, h.deps);
+
+    expect(transcript).toBeNull();
+    expect(h.errors[0].kind).toBe('silent');
+    expect(h.deps.provider.transcribe).not.toHaveBeenCalled();
+  });
+
+  it('uploads a recording that actually holds audio', async () => {
+    const h = harness({ measureBytes: async () => 48_000 });
+    await runVoiceTurn(MEASURED, h.deps);
+    expect(h.deps.provider.transcribe).toHaveBeenCalled();
+  });
+
+  it('logs what the microphone actually produced', async () => {
+    const lines: string[] = [];
+    const h = harness({ measureBytes: async () => 48_000, log: (line: string) => lines.push(line) });
+    await runVoiceTurn(MEASURED, h.deps);
+
+    // Duration, size and format — the three things we could not see when this
+    // was failing on a device.
+    expect(lines.join('\n')).toMatch(/3200ms/);
+    expect(lines.join('\n')).toMatch(/48000 bytes/);
+    expect(lines.join('\n')).toMatch(/audio\/m4a/);
+  });
+});
+
+describe('the mime type comes from the file, not from an assumption', () => {
+  it('maps what expo-audio actually writes', () => {
+    expect(mimeTypeFor('file:///tmp/rec.m4a')).toBe('audio/m4a');
+    expect(mimeTypeFor('file:///tmp/rec.wav')).toBe('audio/wav');
+    expect(mimeTypeFor('file:///tmp/rec.webm')).toBe('audio/webm');
+  });
+
+  it('falls back to m4a, which is what the backend assumes too', () => {
+    expect(mimeTypeFor('file:///tmp/recording')).toBe('audio/m4a');
+    expect(mimeTypeFor('file:///tmp/rec.weird')).toBe('audio/m4a');
   });
 });

@@ -1,8 +1,9 @@
 # Voice: recommendation, architecture, and what Ken needs to set up
 
-Status: **plumbing built, provider not yet chosen.** This document is the
-recommendation. Nothing in the app depends on it — the `VoiceProvider` seam
-means picking a different vendor is one new file.
+Status: **live.** The backend endpoints are deployed with ElevenLabs keys on
+Railway (`voice_enabled: true`), and both directions are verified against the
+real service. The `VoiceProvider` seam still means swapping vendors is one new
+file.
 
 ## The short version
 
@@ -100,10 +101,19 @@ in the same audit trail as everything else.
 
 4. **Nothing goes in the app.** No `EXPO_PUBLIC_` voice keys, ever.
 
-## The backend endpoints this app already calls
+## The backend endpoints, verified
 
-Not built yet. `BackendVoiceProvider` targets these, so voice starts working the
-moment they exist — no app change, no new build, no re-scan.
+Both live. Round-tripped against the deployment — synthesised a sentence, fed
+the returned audio straight back to transcribe, got the sentence back:
+
+```
+POST /v1/voice/speak       →  HTTP 200 in 1.25s, 42,675 bytes of audio/mpeg
+POST /v1/voice/transcribe  →  HTTP 200 in 0.85s, "That sounds like a lot to be
+                              carrying on your own"
+```
+
+The shapes below are what the app sends and reads, confirmed against the real
+responses.
 
 ### `POST /v1/voice/transcribe`
 
@@ -126,6 +136,37 @@ moment they exist — no app change, no new build, no re-scan.
 Base64 rather than multipart/binary so both go through the same JSON client as
 everything else, and because `expo-file-system` reads and writes base64
 directly. The ~33% size overhead is worth not maintaining a second transport.
+
+## How the mic works (and the bug that decided it)
+
+**Tap to start. Speak. Tap again to stop.**
+
+It was press-and-hold, and that was broken on a real phone. `onPressIn` began an
+async start — permission check, audio-mode change, `prepareToRecordAsync()` —
+and `onPressOut` stopped it. A tap stopped a recording that had not begun. Worse,
+the first tap of all races the OS permission dialog, which cancels the touch and
+fires `onPressOut` immediately, so the very first attempt could never work.
+
+The result was a `null` recording reported as **"I could not hear anything in
+that."** The microphone was fine. The interaction was impossible to perform, and
+the app blamed the person's voice for it.
+
+What changed:
+
+- **Tap-to-toggle**, which removes the race by construction and is more forgiving
+  anyway — nobody has to hold a finger down while finding their words, which is
+  exactly when someone talking about something hard would pause.
+- **`stop()` awaits the pending `start()`** regardless, so a stop can never
+  arrive before recording has begun.
+- **A visible listening state**: a red dot, "Listening…", a running timer, and a
+  **live input-level meter**. The meter is the only thing on screen that proves
+  the mic is hearing something — without it, "Listening…" is just a claim.
+- **Distinct messages.** "Microphone access is off — open Settings" is no longer
+  the same sentence as "I could not make out any words." A wrong diagnosis is
+  worse than no diagnosis.
+- **The capture is verified before it is uploaded** — duration *and* byte count.
+  An empty m4a still has a container header, so "the file exists" proves nothing.
+  Duration, size and mime are logged on every turn.
 
 ## One design problem worth deciding on before this ships
 

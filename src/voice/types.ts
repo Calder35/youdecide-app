@@ -15,10 +15,12 @@
 export type RecordedAudio = {
   /** file:// URI on the device. */
   uri: string;
-  /** Milliseconds. Used to reject taps too short to contain speech. */
+  /** Milliseconds, from the recorder itself rather than wall-clock. */
   durationMs: number;
-  /** e.g. 'audio/m4a' — what the recorder actually wrote. */
+  /** e.g. 'audio/m4a' — derived from what the recorder actually wrote. */
   mimeType: string;
+  /** File size. Zero means the mic produced nothing, whatever the duration says. */
+  bytes?: number;
 };
 
 /** What the provider produced: a local file the player can play. */
@@ -49,8 +51,15 @@ export type VoiceProvider = {
  */
 export type VoiceFailureKind =
   | 'unavailable'
+  /** Declined this time, but we may ask again. */
   | 'permissionDenied'
+  /** Turned off at the OS level. Only Settings can fix it. */
+  | 'permissionBlocked'
+  /** Stop arrived before recording had actually begun. */
+  | 'didNotStart'
   | 'tooShort'
+  /** The file exists but holds no audio. */
+  | 'silent'
   | 'noSpeech'
   | 'transcribeFailed'
   | 'speakFailed'
@@ -72,11 +81,25 @@ export class VoiceError extends Error {
 
 const TYPE_INSTEAD = ' You can type instead — the conversation is the same either way.';
 
+/**
+ * Each of these says something DIFFERENT, on purpose.
+ *
+ * The bug that prompted this file's last edit: a permission problem and a
+ * recording that never started were both reported as "I could not hear anything
+ * in that." Someone whose microphone is switched off at the OS level was being
+ * told the AI could not hear them — so they said it again, louder, and it
+ * failed again. A wrong diagnosis is worse than no diagnosis.
+ */
 export const VOICE_MESSAGE: Record<VoiceFailureKind, string> = {
   unavailable: `Speaking out loud is not switched on in this build.${TYPE_INSTEAD}`,
-  permissionDenied: `You Decide does not have permission to use the microphone. You can turn it on in Settings.${TYPE_INSTEAD}`,
-  tooShort: 'That was too short to catch — hold the button while you speak, and let go when you are done.',
-  noSpeech: `I could not hear anything in that.${TYPE_INSTEAD}`,
+  permissionDenied:
+    `You Decide needs permission to use the microphone. Tap the mic again and choose "Allow".${TYPE_INSTEAD}`,
+  permissionBlocked:
+    `Microphone access is off for this app. Open Settings › Expo Go › Microphone and switch it on, then come back.${TYPE_INSTEAD}`,
+  didNotStart: 'Recording had not started yet — tap the mic, wait for “Listening”, then speak.',
+  tooShort: 'That was only a moment — tap the mic, speak, then tap again when you are done.',
+  silent: `The recording came back empty, so the microphone may not be picking anything up.${TYPE_INSTEAD}`,
+  noSpeech: `I could not make out any words in that.${TYPE_INSTEAD}`,
   transcribeFailed: `I could not make out what you said — that is a problem on our end, not yours.${TYPE_INSTEAD}`,
   speakFailed: 'I could not read that reply out loud, but it is on screen above.',
   recordFailed: `The microphone did not start.${TYPE_INSTEAD}`,
@@ -88,3 +111,12 @@ export function voiceError(kind: VoiceFailureKind, cause?: unknown): VoiceError 
 
 /** Below this, a recording is a mis-tap rather than a sentence. */
 export const MIN_RECORDING_MS = 400;
+
+/**
+ * Below this, the file is a container header with no audio in it.
+ *
+ * An empty m4a still weighs a few hundred bytes, so "the file exists" proves
+ * nothing. Checking the size is what catches a mic that opened but captured
+ * silence — the failure that sent us here.
+ */
+export const MIN_AUDIO_BYTES = 2_000;

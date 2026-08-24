@@ -38,7 +38,10 @@ export async function renderApp(options: RenderOptions = {}) {
       <SellerSessionProvider client={options.client}>
         {/* No typing delay: tests should not wait on a simulated pause. */}
         <ChatSessionProvider client={options.client} thinkingDelayMs={0}>
-          <VoiceSessionProvider client={options.client} dependencies={options.voice}>
+          <VoiceSessionProvider
+            client={options.client}
+            dependencies={{ log: () => undefined, ...options.voice }}
+          >
             <NavigationContainer>
               <RootNavigator initialRouteName={options.initialRouteName} />
             </NavigationContainer>

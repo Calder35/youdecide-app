@@ -16,6 +16,7 @@ import { expoFileBridge } from '../voice/expoFileBridge';
 import { playSpeech } from '../voice/playSpeech';
 import { useMicrophone } from '../voice/useMicrophone';
 import { runVoiceTurn, type VoiceTurnStage } from '../voice/voiceTurn';
+import type { StopOutcome } from '../voice/useMicrophone';
 import { VoiceError, voiceError, type VoiceProvider } from '../voice/types';
 import { useChatSession } from './ChatSession';
 
@@ -29,6 +30,10 @@ import { useChatSession } from './ChatSession';
 
 export type VoiceSessionValue = {
   stage: VoiceTurnStage;
+  /** Milliseconds recorded so far. Drives the timer while listening. */
+  elapsedMs: number;
+  /** Live input level in dBFS, or null when not metering. Drives the meter. */
+  level: number | null;
   /** True when this build can do voice at all. */
   isAvailable: boolean;
   /** The last voice problem, in the person's language. */
@@ -46,8 +51,11 @@ const VoiceSessionContext = createContext<VoiceSessionValue | null>(null);
 export type VoiceDependencies = {
   provider?: VoiceProvider;
   startRecording?: () => Promise<void>;
-  stopRecording?: () => Promise<Parameters<typeof runVoiceTurn>[0] | null>;
+  stopRecording?: () => Promise<StopOutcome>;
   play?: (uri: string) => Promise<void>;
+  measureBytes?: (uri: string) => Promise<number>;
+  /** Defaults to console. Tests pass a no-op to keep output readable. */
+  log?: (message: string) => void;
 };
 
 export function VoiceSessionProvider({
@@ -92,26 +100,33 @@ export function VoiceSessionProvider({
   }, [provider, dependencies, microphone, report]);
 
   const stopListeningAndRespond = useCallback(async () => {
-    let audio;
+    let outcome: StopOutcome;
     try {
-      audio = await (dependencies.stopRecording ?? microphone.stop)();
+      outcome = await (dependencies.stopRecording ?? microphone.stop)();
     } catch (thrown) {
       setStage('idle');
       report(thrown instanceof VoiceError ? thrown : voiceError('recordFailed', thrown));
       return;
     }
 
-    if (audio === null) {
+    if (!outcome.ok) {
+      // Says which of the two actually happened. Reporting both as "I could not
+      // hear anything" is what made a broken interaction look like a broken
+      // microphone, and sent someone repeating themselves at a dead button.
       setStage('idle');
-      report(voiceError('noSpeech'));
+      report(voiceError(outcome.kind));
       return;
     }
 
-    await runVoiceTurn(audio, {
+    await runVoiceTurn(outcome.audio, {
       provider,
       onStage: setStage,
       onError: report,
       play: dependencies.play ?? playSpeech,
+      measureBytes: dependencies.measureBytes ?? expoFileBridge.sizeOf,
+      // Duration and byte count are exactly what we could not see when this
+      // was failing on a real phone.
+      log: dependencies.log ?? ((message) => console.log(message)),
       // One conversation. The transcript goes through the same path a typed
       // message does, so history, escalation, and errors all behave identically
       // whether someone spoke or typed — and `send` hands back the reply, so
@@ -123,6 +138,8 @@ export function VoiceSessionProvider({
   const value = useMemo<VoiceSessionValue>(
     () => ({
       stage,
+      elapsedMs: microphone.durationMs,
+      level: microphone.metering,
       isAvailable: provider.isAvailable,
       error,
       dismissError: () => setError(null),
@@ -130,7 +147,7 @@ export function VoiceSessionProvider({
       stopListeningAndRespond,
       isBusy: stage !== 'idle' && stage !== 'recording',
     }),
-    [stage, provider, error, startListening, stopListeningAndRespond],
+    [stage, microphone, provider, error, startListening, stopListeningAndRespond],
   );
 
   return <VoiceSessionContext.Provider value={value}>{children}</VoiceSessionContext.Provider>;

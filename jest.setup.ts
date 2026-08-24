@@ -46,9 +46,10 @@ jest.mock('expo-audio', () => ({
     record: jest.fn(),
     stop: jest.fn(async () => undefined),
     prepareToRecordAsync: jest.fn(async () => undefined),
+    getStatus: jest.fn(() => ({ durationMillis: 2500, isRecording: false })),
     uri: 'file:///tmp/recording.m4a',
   })),
-  useAudioRecorderState: jest.fn(() => ({ isRecording: false })),
+  useAudioRecorderState: jest.fn(() => ({ isRecording: false, durationMillis: 0, metering: -160 })),
   createAudioPlayer: jest.fn(() => ({
     play: jest.fn(),
     remove: jest.fn(),
