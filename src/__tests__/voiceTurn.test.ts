@@ -318,3 +318,37 @@ describe('the mime type comes from the file, not from an assumption', () => {
     expect(mimeTypeFor('file:///tmp/rec.weird')).toBe('audio/m4a');
   });
 });
+
+describe('the whole turn is logged, not just the capture', () => {
+  it('records what happened at each step of a good turn', async () => {
+    const lines: string[] = [];
+    const h = harness({ measureBytes: async () => 48_000, log: (line: string) => lines.push(line) });
+    await runVoiceTurn(AUDIO, h.deps);
+
+    const transcript = lines.join('\n');
+    expect(transcript).toMatch(/captured/);
+    expect(transcript).toMatch(/transcript \d+ chars/);
+    expect(transcript).toMatch(/speaking \d+ chars/);
+    expect(transcript).toMatch(/turn complete/);
+  });
+
+  it('says why transcription failed, rather than leaving us to infer it', async () => {
+    const lines: string[] = [];
+    const h = harness({ log: (line: string) => lines.push(line) });
+    (h.provider.transcribe as jest.Mock).mockRejectedValue(new Error('503 from provider'));
+    await runVoiceTurn(AUDIO, h.deps);
+
+    expect(lines.join('\n')).toMatch(/transcribe failed/);
+  });
+
+  it('distinguishes "heard no words" from "the request failed"', async () => {
+    const lines: string[] = [];
+    const h = harness({ log: (line: string) => lines.push(line) });
+    (h.provider.transcribe as jest.Mock).mockResolvedValue('');
+    await runVoiceTurn(AUDIO, h.deps);
+
+    // The recording had audio and the service still returned nothing — that
+    // points at the microphone, not the network, and the log should say so.
+    expect(lines.join('\n')).toMatch(/empty despite a non-empty recording/);
+  });
+});

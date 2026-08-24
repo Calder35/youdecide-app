@@ -82,7 +82,20 @@ export function VoiceSessionProvider({
       : unavailableVoiceProvider;
   }, [api, dependencies.provider]);
 
-  const report = useCallback((thrown: VoiceError) => setError(thrown.personMessage), []);
+  const log = useMemo(
+    () => dependencies.log ?? ((message: string) => console.log(message)),
+    [dependencies.log],
+  );
+
+  const report = useCallback(
+    (thrown: VoiceError) => {
+      // Logged as well as shown. When someone reports "it failed instantly",
+      // the kind is the whole answer — and last time we had to infer it.
+      log(`voice: ${thrown.kind} — ${thrown.personMessage}`);
+      setError(thrown.personMessage);
+    },
+    [log],
+  );
 
   const startListening = useCallback(async () => {
     if (!provider.isAvailable) {
@@ -126,14 +139,14 @@ export function VoiceSessionProvider({
       measureBytes: dependencies.measureBytes ?? expoFileBridge.sizeOf,
       // Duration and byte count are exactly what we could not see when this
       // was failing on a real phone.
-      log: dependencies.log ?? ((message) => console.log(message)),
+      log,
       // One conversation. The transcript goes through the same path a typed
       // message does, so history, escalation, and errors all behave identically
       // whether someone spoke or typed — and `send` hands back the reply, so
       // speaking it does not depend on reading state that has not committed.
       sendToBrain: (transcript) => chat.send(transcript),
     });
-  }, [provider, dependencies, microphone, chat, report]);
+  }, [provider, dependencies, microphone, chat, report, log]);
 
   const value = useMemo<VoiceSessionValue>(
     () => ({

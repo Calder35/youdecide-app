@@ -83,13 +83,20 @@ export async function runVoiceTurn(
   try {
     onStage('transcribing');
     transcript = (await provider.transcribe(audio)).trim();
+    deps.log?.(`voice: transcript ${transcript.length} chars`);
   } catch (thrown) {
-    onError(asVoiceError(thrown, 'transcribeFailed'));
+    const failure = asVoiceError(thrown, 'transcribeFailed');
+    deps.log?.(`voice: transcribe failed — ${failure.kind}: ${String(failure.cause ?? failure.message)}`);
+    onError(failure);
     onStage('idle');
     return null;
   }
 
   if (transcript.length === 0) {
+    // The capture had audio in it and the service still heard no words. Worth
+    // logging as distinct from a failed request — it points at the recording,
+    // not the network.
+    deps.log?.('voice: transcript empty despite a non-empty recording');
     onError(voiceError('noSpeech'));
     onStage('idle');
     return null;
@@ -119,9 +126,13 @@ export async function runVoiceTurn(
   try {
     onStage('speaking');
     const speech = await provider.synthesize(reply);
+    deps.log?.(`voice: speaking ${reply.length} chars`);
     await play(speech.uri);
+    deps.log?.('voice: turn complete');
   } catch (thrown) {
-    onError(asVoiceError(thrown, 'speakFailed'));
+    const failure = asVoiceError(thrown, 'speakFailed');
+    deps.log?.(`voice: speak failed — ${String(failure.cause ?? failure.message)}`);
+    onError(failure);
   } finally {
     onStage('idle');
   }
