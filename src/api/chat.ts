@@ -6,7 +6,7 @@ import { CHAT_TIMEOUT_MS } from './config';
  *
  * Backend contract (POST /v1/chat):
  *
- *   request   { conversation_id?: string, message: string }
+ *   request   { conversation_id?: string, message: string, mode?: "voice" }
  *   response  { conversation_id: string, reply: string,
  *               escalate?: boolean, escalate_kind?: string }
  *
@@ -16,12 +16,26 @@ import { CHAT_TIMEOUT_MS } from './config';
  * crisis", which is the distinction that matters most — so `escalate_kind`
  * wins whenever it is present.
  *
+ * `mode: "voice"` tells the backend the person SPOKE rather than typed, so it
+ * can answer in one to three conversational sentences instead of the paragraphs
+ * that read well on screen. A text-wall is a fine reply and a poor thing to
+ * listen to — measured, a 1,230-character answer is thirteen seconds of speech
+ * before anyone gets a word in. Typed turns send no mode at all and are
+ * unchanged.
+ *
  * `escalate` is the ONLY thing that brings a person into the conversation.
  * There is no user-facing "talk to a human" exit — see `EscalationOffer` for
  * why. The field is read tolerantly (boolean, string, or object) because the
  * endpoint is not built yet and we would rather degrade than crash on a shape
  * we did not predict.
  */
+
+/**
+ * How the person is talking to us. Sent only for spoken turns; a typed turn
+ * omits the field entirely rather than sending "text", so nothing about the
+ * existing behaviour depends on a new value being understood.
+ */
+export type ChatMode = 'voice';
 
 /** How a person gets brought in, when the AI decides one is needed. */
 export type EscalationKind =
@@ -94,11 +108,16 @@ export function readEscalationNote(raw: unknown, fallback?: string): string | un
 
 export async function sendChatMessage(
   client: ApiClient,
-  input: { conversationId: string | null; message: string },
+  input: { conversationId: string | null; message: string; mode?: ChatMode },
 ): Promise<ChatReply> {
-  const body: { message: string; conversation_id?: string } = { message: input.message };
+  const body: { message: string; conversation_id?: string; mode?: ChatMode } = {
+    message: input.message,
+  };
   if (input.conversationId !== null) {
     body.conversation_id = input.conversationId;
+  }
+  if (input.mode !== undefined) {
+    body.mode = input.mode;
   }
 
   const raw = await client.request<RawChatResponse>({

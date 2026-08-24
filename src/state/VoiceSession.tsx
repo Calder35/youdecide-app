@@ -144,7 +144,11 @@ export function VoiceSessionProvider({
       // message does, so history, escalation, and errors all behave identically
       // whether someone spoke or typed — and `send` hands back the reply, so
       // speaking it does not depend on reading state that has not committed.
-      sendToBrain: (transcript) => chat.send(transcript),
+      //
+      // `mode: 'voice'` is the one difference: it tells the backend this turn
+      // will be LISTENED to, so it can answer in a sentence or two instead of
+      // the paragraphs that read well but take thirteen seconds to say.
+      sendToBrain: (transcript) => chat.send(transcript, { mode: 'voice' }),
     });
   }, [provider, dependencies, microphone, chat, report, log]);
 

@@ -9,7 +9,7 @@ import {
 } from 'react';
 
 import { ApiClient } from '../api/client';
-import { sendChatMessage, type EscalationKind } from '../api/chat';
+import { sendChatMessage, type ChatMode, type EscalationKind } from '../api/chat';
 import {
   OPENING_MESSAGE,
   newStubConversation,
@@ -44,8 +44,13 @@ export type ChatSessionValue = {
   thinking: boolean;
   /** A send that failed, in the person's language. */
   error: string | null;
-  /** Resolves with the AI's reply text, or null if there was not one. */
-  send: (message: string) => Promise<string | null>;
+  /**
+   * Resolves with the AI's reply text, or null if there was not one.
+   *
+   * `mode: 'voice'` marks a spoken turn so the backend can answer in a couple
+   * of sentences rather than paragraphs. Typed turns pass nothing.
+   */
+  send: (message: string, options?: { mode?: ChatMode }) => Promise<string | null>;
   retry: () => Promise<string | null>;
   /** The highest escalation the conversation has reached, if any. */
   escalation: EscalationKind;
@@ -89,10 +94,12 @@ export function ChatSessionProvider({
 
   const conversationIdRef = useRef<string | null>(null);
   const stubRef = useRef<StubConversation>(newStubConversation());
-  const lastMessageRef = useRef<string | null>(null);
+  // Retry has to resend the SAME kind of turn. Retrying a spoken message as a
+  // typed one would hand back a paragraph to something waiting to speak it.
+  const lastSendRef = useRef<{ message: string; mode?: ChatMode } | null>(null);
 
   const deliver = useCallback(
-    async (message: string): Promise<string | null> => {
+    async (message: string, mode?: ChatMode): Promise<string | null> => {
       setThinking(true);
       setError(null);
 
@@ -102,6 +109,7 @@ export function ChatSessionProvider({
           reply = await sendChatMessage(api, {
             conversationId: conversationIdRef.current,
             message,
+            mode,
           });
           conversationIdRef.current = reply.conversationId || conversationIdRef.current;
         } else {
@@ -147,21 +155,21 @@ export function ChatSessionProvider({
   );
 
   const send = useCallback(
-    async (message: string): Promise<string | null> => {
+    async (message: string, options?: { mode?: ChatMode }): Promise<string | null> => {
       const trimmed = message.trim();
       if (trimmed.length === 0) return null;
 
-      lastMessageRef.current = trimmed;
+      lastSendRef.current = { message: trimmed, mode: options?.mode };
       setTurns((current) => [...current, { id: nextId('you'), role: 'you', text: trimmed }]);
-      return deliver(trimmed);
+      return deliver(trimmed, options?.mode);
     },
     [deliver],
   );
 
   const retry = useCallback(async (): Promise<string | null> => {
-    const last = lastMessageRef.current;
+    const last = lastSendRef.current;
     if (last === null) return null;
-    return deliver(last);
+    return deliver(last.message, last.mode);
   }, [deliver]);
 
   const value = useMemo<ChatSessionValue>(() => {

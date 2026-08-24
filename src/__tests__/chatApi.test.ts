@@ -254,3 +254,39 @@ describe('what the live backend actually does on a bad day', () => {
     expect(reply.escalate).toBe('none');
   });
 });
+
+/**
+ * The voice-mode seam.
+ *
+ * The backend is building to this exact field and value, so these tests pin the
+ * wire format rather than a behaviour. A rename on either side breaks here
+ * instead of silently producing a paragraph for something waiting to speak it.
+ */
+describe('mode: "voice" on the chat request', () => {
+  it('sends the field, spelled exactly, on a spoken turn', async () => {
+    const { client, seen } = clientFor(() => ({ conversation_id: 'c-1', reply: 'Go on.' }));
+
+    await sendChatMessage(client, { conversationId: null, message: 'spoken', mode: 'voice' });
+
+    expect(seen[0].body).toEqual({ message: 'spoken', mode: 'voice' });
+  });
+
+  it('carries the mode alongside a conversation id', async () => {
+    const { client, seen } = clientFor(() => ({ conversation_id: 'c-1', reply: 'Go on.' }));
+
+    await sendChatMessage(client, { conversationId: 'c-1', message: 'more', mode: 'voice' });
+
+    expect(seen[0].body).toEqual({ conversation_id: 'c-1', message: 'more', mode: 'voice' });
+  });
+
+  it('OMITS the field entirely on a typed turn', async () => {
+    const { client, seen } = clientFor(() => ({ conversation_id: 'c-1', reply: 'Go on.' }));
+
+    await sendChatMessage(client, { conversationId: null, message: 'typed' });
+
+    // Not `mode: "text"`, not `mode: undefined` — absent. Nothing about the
+    // existing behaviour should depend on a new value being understood.
+    expect(seen[0].body).toEqual({ message: 'typed' });
+    expect(Object.keys(seen[0].body as object)).not.toContain('mode');
+  });
+});

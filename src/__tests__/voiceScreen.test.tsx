@@ -7,6 +7,7 @@ import {
   formatElapsed,
   normalizeLevel,
 } from '../components/MicButton';
+import { ApiClient } from '../api/client';
 import type { VoiceDependencies } from '../state/VoiceSession';
 import type { VoiceProvider } from '../voice/types';
 import { onTop, renderApp, sayToAi } from '../test-utils/renderApp';
@@ -225,5 +226,69 @@ describe('the timer never shows nonsense', () => {
     expect(normalizeLevel(null)).toBe(0);
     expect(normalizeLevel(0)).toBe(1); // as loud as it gets
     expect(normalizeLevel(-25)).toBeCloseTo(0.5, 1);
+  });
+});
+
+/**
+ * The spoken turn declares itself to the backend, and the typed one does not.
+ */
+describe('voice turns ask for a spoken-style reply', () => {
+  /** A backend that records exactly what the app sent. */
+  function recordingBackend() {
+    const bodies: Record<string, unknown>[] = [];
+    const client = new ApiClient({
+      config: { mode: 'test-api', baseUrl: 'http://localhost:8000' },
+      fetchImpl: (async (_input: unknown, init?: { body?: string }) => {
+        if (init?.body !== undefined) bodies.push(JSON.parse(init.body));
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            conversation_id: 'c-1',
+            reply: 'How far behind are you?',
+            escalate: false,
+            escalate_kind: 'none',
+          }),
+        } as Response;
+      }) as unknown as typeof fetch,
+    });
+    return { client, bodies };
+  }
+
+  it('sends mode: "voice" when the person spoke', async () => {
+    const backend = recordingBackend();
+    const voice = fakeVoice();
+    await renderApp({ client: backend.client, voice: voice.dependencies });
+
+    await tapSpeakTap();
+
+    await waitFor(() => expect(backend.bodies.length).toBeGreaterThan(0));
+    const chatCall = backend.bodies.find((body) => 'message' in body);
+    expect(chatCall).toMatchObject({ mode: 'voice' });
+  });
+
+  it('sends no mode when the person typed', async () => {
+    const backend = recordingBackend();
+    await renderApp({ client: backend.client, voice: fakeVoice().dependencies });
+
+    await sayToAi('I would rather type this one.');
+
+    await waitFor(() => expect(backend.bodies.length).toBeGreaterThan(0));
+    const chatCall = backend.bodies.find((body) => 'message' in body);
+    expect(Object.keys(chatCall ?? {})).not.toContain('mode');
+  });
+
+  it('still shows the reply in the transcript and speaks it', async () => {
+    const backend = recordingBackend();
+    const voice = fakeVoice();
+    await renderApp({ client: backend.client, voice: voice.dependencies });
+
+    await tapSpeakTap();
+
+    // Rendered...
+    await waitFor(() => expect(screen.getByText('How far behind are you?')).toBeOnTheScreen());
+    // ...and spoken.
+    await waitFor(() => expect(voice.provider.synthesize).toHaveBeenCalled());
+    expect(voice.played.length).toBeGreaterThan(0);
   });
 });

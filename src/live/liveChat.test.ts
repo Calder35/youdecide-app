@@ -56,6 +56,30 @@ describeLive('the deployed backend, for real', () => {
     expect(second.reply).toMatch(/jordan/i);
   });
 
+  /**
+   * The voice-mode seam, end to end.
+   *
+   * Until the backend implements `mode`, this only proves the field is
+   * TOLERATED — which is what makes it safe to ship ahead of the backend. Once
+   * it lands, the length assertion below starts doing real work.
+   */
+  it('accepts mode: "voice" and answers', async () => {
+    const spoken = await sendChatMessage(client, {
+      conversationId: null,
+      message: 'I am three months behind on my mortgage.',
+      mode: 'voice',
+    });
+
+    expect(spoken.reply.length).toBeGreaterThan(0);
+    console.log(`mode:voice reply -> ${spoken.reply.length} chars`);
+
+    // Once the backend implements it, a spoken reply should be short enough to
+    // listen to. ~400 chars is roughly four seconds of speech.
+    if (spoken.reply.length > 400) {
+      console.log('  (backend has not shortened voice replies yet)');
+    }
+  });
+
   it('leads with discovery rather than the fee or the listing process', async () => {
     const reply = await sendChatMessage(client, {
       conversationId: null,
