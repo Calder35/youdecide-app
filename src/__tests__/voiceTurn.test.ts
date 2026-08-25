@@ -459,3 +459,76 @@ describe('writing spoken audio to disk', () => {
     }
   });
 });
+
+/**
+ * Where the seconds went.
+ *
+ * "It's still slow" is not a thing anyone can act on. A per-turn breakdown is:
+ * it says whether to go and argue with the speech service, the model, or the
+ * synthesiser. `toFirstSoundMs` is the number a person actually feels — the
+ * silence between them finishing their sentence and hearing anything back.
+ */
+describe('every turn reports where its time went', () => {
+  /** A clock that advances a fixed amount on each read, so timings are exact. */
+  function clock(steps: number[]) {
+    let index = 0;
+    let elapsed = 0;
+    return () => {
+      elapsed += steps[Math.min(index, steps.length - 1)] ?? 0;
+      index += 1;
+      return elapsed;
+    };
+  }
+
+  it('breaks the wait down into speech, brain, and synthesis', async () => {
+    const timings: Parameters<NonNullable<Parameters<typeof runVoiceTurn>[1]['onTiming']>>[0][] =
+      [];
+    const h = harness({ now: clock([0, 100]), onTiming: (t) => timings.push(t) });
+
+    await runVoiceTurn(AUDIO, h.deps);
+
+    expect(timings).toHaveLength(1);
+    const [timing] = timings;
+    // Each stage was measured separately rather than lumped together...
+    expect(timing.sttMs).toBeGreaterThan(0);
+    expect(timing.chatMs).toBeGreaterThan(0);
+    expect(timing.ttsFirstChunkMs).toBeGreaterThan(0);
+    // ...and the felt delay is at least the sum of the three that cause it.
+    expect(timing.toFirstSoundMs).toBeGreaterThanOrEqual(
+      timing.sttMs + timing.chatMs + timing.ttsFirstChunkMs,
+    );
+  });
+
+  it('reports at the FIRST sound, not at the end of the reply', async () => {
+    // A long reply is spoken in several pieces. The wait people care about
+    // ended when the first one started playing; everything after that is the
+    // reply happening, which is not waiting.
+    const timings: { toFirstSoundMs: number; chunkCount: number }[] = [];
+    const h = harness({
+      sendToBrain: jest.fn(async () => LONG_SPOKEN_REPLY),
+      onTiming: (t) => timings.push(t),
+    });
+
+    await runVoiceTurn(AUDIO, h.deps);
+
+    expect(timings).toHaveLength(1);
+    expect(timings[0].chunkCount).toBeGreaterThan(1);
+    // Reported before the later chunks had even been spoken.
+    expect(h.played.length).toBeGreaterThan(1);
+  });
+
+  it('says nothing about timing when there was no reply to speak', async () => {
+    const timings: unknown[] = [];
+    const h = harness({ sendToBrain: jest.fn(async () => null), onTiming: () => timings.push(1) });
+
+    await runVoiceTurn(AUDIO, h.deps);
+
+    expect(timings).toEqual([]);
+  });
+});
+
+const LONG_SPOKEN_REPLY =
+  'That happens a lot, and there are real options — selling on your terms is one of them. ' +
+  'Has anything formal come from your lender yet, like a notice of default? ' +
+  'Knowing that changes the timeline, and it changes which doors are still open to you. ' +
+  'Either way, we can work out what the house would realistically bring in today.';

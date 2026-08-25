@@ -1,4 +1,4 @@
-import { MAX_CHUNK_CHARS, splitForSpeech } from '../voice/speechChunks';
+import { FIRST_CHUNK_CHARS, MAX_CHUNK_CHARS, splitForSpeech } from '../voice/speechChunks';
 
 /**
  * Splitting a reply for speech.
@@ -45,8 +45,10 @@ describe('long replies are split for speech', () => {
   });
 
   it('breaks at sentence ends, not mid-thought', () => {
-    // Every chunk but the last should finish a sentence.
-    const midSentence = chunks.slice(0, -1).filter((chunk) => !/[.!?]$/.test(chunk));
+    // Every chunk but the FIRST and the last should finish a sentence. The
+    // first is allowed to stop early — see below — because time-to-first-sound
+    // is worth more than a tidy seam nobody has heard yet.
+    const midSentence = chunks.slice(1, -1).filter((chunk) => !/[.!?]$/.test(chunk));
     expect(midSentence).toEqual([]);
   });
 
@@ -58,8 +60,17 @@ describe('long replies are split for speech', () => {
   });
 
   it('gets the first sound going quickly', () => {
-    // The whole point: the first chunk is short enough to synthesise fast.
-    expect(chunks[0].length).toBeLessThanOrEqual(MAX_CHUNK_CHARS);
+    // The whole point: the opening chunk is held to a tighter budget than the
+    // rest, because that one is the wait a person actually sits through.
+    expect(chunks[0].length).toBeLessThanOrEqual(FIRST_CHUNK_CHARS);
+  });
+
+  it('cuts the opening chunk on a word, even mid-sentence', () => {
+    // The opening sentence here is longer than the first-chunk budget, so it
+    // has to be cut early. Cutting mid-WORD would be audible; cutting
+    // mid-sentence is not.
+    expect(chunks[0]).not.toMatch(/\s$/);
+    expect(LONG_REPLY.replace(/\s+/g, ' ')).toContain(chunks[0]);
   });
 });
 

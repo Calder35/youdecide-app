@@ -1,4 +1,4 @@
-import { createAudioPlayer, setAudioModeAsync, type AudioPlayer, type AudioStatus } from 'expo-audio';
+import { createAudioPlayer, type AudioPlayer, type AudioStatus } from 'expo-audio';
 
 /**
  * Plays one spoken reply, and resolves when it has finished.
@@ -14,6 +14,12 @@ import { createAudioPlayer, setAudioModeAsync, type AudioPlayer, type AudioStatu
  * This version waits for the file to load, then plays, and gives up loudly
  * rather than silently. A reply that cannot be spoken is a small failure; a
  * conversation frozen mid-turn is not.
+ *
+ * IT NO LONGER SETS THE AUDIO MODE. It used to, on every chunk — so a reply
+ * spoken in four pieces made four native session calls, three of them asking
+ * for a mode the session was already in. The switch out of recording now
+ * happens once per turn, kicked off the moment the mic stops and awaited via
+ * `Microphone.readyForPlayback()` before the first sound.
  */
 
 /** A local file should load almost instantly. If it has not, something is wrong. */
@@ -23,8 +29,6 @@ const LOAD_TIMEOUT_MS = 10_000;
 const PLAY_TIMEOUT_MS = 180_000;
 
 export async function playSpeech(uri: string): Promise<void> {
-  await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
-
   const player = createAudioPlayer({ uri });
 
   try {

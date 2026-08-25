@@ -38,6 +38,32 @@ export type VoiceTurnDeps = {
   measureBytes?: (uri: string) => Promise<number>;
   /** Diagnostics. Duration and size are what tell us what the mic really did. */
   log?: (message: string) => void;
+  /** Wall clock, injectable so timing assertions are deterministic in tests. */
+  now?: () => number;
+  /** Per-stage milliseconds, reported once the turn is done. */
+  onTiming?: (timing: VoiceTurnTiming) => void;
+};
+
+/**
+ * Where a spoken turn's seconds actually go.
+ *
+ * Reported per turn because "it's slow" is not actionable and
+ * "stt=1.0s chat=3.8s tts=1.4s" is. `toFirstSoundMs` is the number a person
+ * feels: the silence between them finishing and the reply starting. It is
+ * reported AT the first sound rather than at the end of the turn, because
+ * everything after that point is the reply playing, which is not waiting.
+ */
+export type VoiceTurnTiming = {
+  /** Upload, recognise, come back. */
+  sttMs: number;
+  /** The brain. Usually the largest of the three, and not ours to shorten. */
+  chatMs: number;
+  /** Synthesising the FIRST chunk — what stands between them and hearing it. */
+  ttsFirstChunkMs: number;
+  /** Stop-of-recording to first audible sound. The whole felt delay. */
+  toFirstSoundMs: number;
+  /** How many pieces the reply was split into. */
+  chunkCount: number;
 };
 
 /**
@@ -51,6 +77,10 @@ export async function runVoiceTurn(
   deps: VoiceTurnDeps,
 ): Promise<string | null> {
   const { provider, sendToBrain, onStage, onTranscript, onError } = deps;
+  const now = deps.now ?? (() => Date.now());
+  const startedAt = now();
+  let sttMs = 0;
+  let chatMs = 0;
 
   if (!provider.isAvailable) {
     onError(voiceError('unavailable'));
@@ -83,7 +113,9 @@ export async function runVoiceTurn(
   let transcript: string;
   try {
     onStage('transcribing');
+    const sttStarted = now();
     transcript = (await provider.transcribe(audio)).trim();
+    sttMs = now() - sttStarted;
     deps.log?.(`voice: transcript ${transcript.length} chars`);
   } catch (thrown) {
     const failure = asVoiceError(thrown, 'transcribeFailed');
@@ -106,9 +138,11 @@ export async function runVoiceTurn(
   onTranscript?.(transcript);
 
   let reply: string | null;
+  const chatStarted = now();
   try {
     onStage('thinking');
     reply = await sendToBrain(transcript);
+    chatMs = now() - chatStarted;
   } catch (thrown) {
     // The brain failing is the chat layer's problem to report — it already
     // shows its own error and offers a retry. Voice does not double up on it.
@@ -125,21 +159,47 @@ export async function runVoiceTurn(
   // fails below costs them audio, not meaning — so it is reported gently and
   // the turn still counts as a success.
   onStage('speaking');
-  await speakInChunks(reply, deps);
+  await speakInChunks(reply, deps, {
+    now,
+    onFirstSound: (ttsFirstChunkMs, chunkCount) => {
+      const toFirstSoundMs = now() - startedAt;
+      deps.onTiming?.({ sttMs, chatMs, ttsFirstChunkMs, toFirstSoundMs, chunkCount });
+      deps.log?.(
+        `voice: timing stt=${sttMs}ms chat=${chatMs}ms tts1=${ttsFirstChunkMs}ms ` +
+          `(${chunkCount} chunk${chunkCount === 1 ? '' : 's'}) → first sound ${toFirstSoundMs}ms ` +
+          'after the mic stopped',
+      );
+    },
+  });
   onStage('idle');
 
   return transcript;
 }
 
 /**
+ * How many chunks are kept in flight ahead of the one being spoken.
+ *
+ * One was not enough. With a lookahead of one, chunk N+1's synthesis begins
+ * only when chunk N is ready to play — so a chunk that takes longer to
+ * synthesise than the previous one takes to say leaves a gap mid-reply. Two in
+ * flight covers that, and beyond two the requests just queue behind speech that
+ * has not been said yet.
+ */
+const SYNTHESIS_LOOKAHEAD = 2;
+
+/**
  * Speaks a reply a sentence at a time, synthesising ahead while it plays.
  *
- * The pipeline is the point. Chunk N+1 is requested BEFORE chunk N starts
- * playing, so the network work happens during the audio rather than before it.
- * A person hears the first sentence in about a second instead of waiting out
- * the whole reply — 37 seconds, at the top end we measured.
+ * The pipeline is the point. Later chunks are requested BEFORE the current one
+ * plays, so the network work happens during the audio rather than before it. A
+ * person hears the first sentence in about a second and a half instead of
+ * waiting out the whole reply — 37 seconds, at the top end we measured.
  */
-async function speakInChunks(reply: string, deps: VoiceTurnDeps): Promise<void> {
+async function speakInChunks(
+  reply: string,
+  deps: VoiceTurnDeps,
+  timing: { now: () => number; onFirstSound: (ttsMs: number, chunkCount: number) => void },
+): Promise<void> {
   const { provider, play, onError } = deps;
   const chunks = splitForSpeech(reply);
 
@@ -152,11 +212,25 @@ async function speakInChunks(reply: string, deps: VoiceTurnDeps): Promise<void> 
       (error) => deps.log?.(`voice: synthesize failed, retrying once — ${describe(error)}`),
     );
 
-  let pending: Promise<{ uri: string }> | null = synthesize(chunks[0]);
+  const inFlight: (Promise<{ uri: string }> | null)[] = chunks.map(() => null);
+
+  /** Starts a chunk synthesising, if it exists and has not been started. */
+  const requestChunk = (index: number) => {
+    if (index >= chunks.length || inFlight[index] !== null) return;
+    const request = synthesize(chunks[index]);
+    // A chunk we may never reach — because an earlier one failed — must not
+    // surface as an unhandled rejection. Awaiting it below still throws.
+    request.catch(() => undefined);
+    inFlight[index] = request;
+  };
+
+  const speakStarted = timing.now();
+  for (let ahead = 0; ahead < SYNTHESIS_LOOKAHEAD; ahead += 1) requestChunk(ahead);
   let spoken = 0;
 
   for (let index = 0; index < chunks.length; index += 1) {
-    const current = pending;
+    requestChunk(index);
+    const current = inFlight[index];
     if (current === null) break;
 
     let audio;
@@ -167,16 +241,12 @@ async function speakInChunks(reply: string, deps: VoiceTurnDeps): Promise<void> 
       return;
     }
 
-    // Kick off the NEXT synthesis before playing this one, so the request and
-    // the audio overlap. Its rejection is caught where it is awaited.
-    pending =
-      index + 1 < chunks.length
-        ? synthesize(chunks[index + 1]).catch((thrown: unknown) => {
-            throw thrown;
-          })
-        : null;
+    // Top the queue back up before playing, so the requests and the audio
+    // overlap rather than alternate.
+    for (let ahead = 1; ahead <= SYNTHESIS_LOOKAHEAD; ahead += 1) requestChunk(index + ahead);
 
     try {
+      if (index === 0) timing.onFirstSound(timing.now() - speakStarted, chunks.length);
       await play(audio.uri);
       spoken += 1;
     } catch (thrown) {

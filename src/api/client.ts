@@ -48,6 +48,27 @@ export class ApiClient {
     return this.config.mode === 'test-api';
   }
 
+  /**
+   * Opens the connection ahead of a request that is about to matter.
+   *
+   * A cold TLS handshake to the backend measured 0.40-0.50s; a warm one 0.09s.
+   * That difference sits in front of the FIRST spoken turn of a conversation —
+   * the one where someone is deciding whether this thing works. Entering voice
+   * mode fires this so the handshake happens while they are still drawing
+   * breath.
+   *
+   * Deliberately silent. It is an optimisation, and an optimisation that can
+   * report a failure is a bug waiting to be filed against a working app.
+   */
+  async warmUp(): Promise<void> {
+    if (!this.isConnected) return;
+    try {
+      await this.request<unknown>({ method: 'GET', path: '/health', timeoutMs: 3_000 });
+    } catch {
+      // Nothing to do and nothing to say. The real request will report for real.
+    }
+  }
+
   async request<T>(options: RequestOptions): Promise<T> {
     if (this.config.mode === 'offline') {
       // Not an exception path — this is the default build. Callers check

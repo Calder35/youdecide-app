@@ -28,6 +28,28 @@
  */
 export const MAX_CHUNK_CHARS = 240;
 
+/**
+ * A TIGHTER budget for the FIRST chunk only, because that one is the wait.
+ *
+ * Timed against the live `/v1/voice/speak`, synthesis is a fixed cost plus a
+ * per-character one — about 1.25s + 5ms/char:
+ *
+ *      8 chars → 1.47s      160 chars → 1.99s
+ *     40 chars → 1.29s      245 chars → 2.51s
+ *     88 chars → 1.45s
+ *
+ * A spoken-mode reply runs 150-180 characters, which fitted inside the old
+ * 240-character budget as a SINGLE chunk — so chunking, built to help long
+ * replies, did nothing at all for the ordinary case and every turn paid the
+ * full two seconds. Cutting the first chunk at ~110 characters lands it on the
+ * first sentence and starts the sound roughly half a second sooner, every turn.
+ *
+ * Not smaller: the fixed 1.25s dominates below about 60 characters, so a
+ * shorter opener buys almost nothing and costs a seam in the middle of a
+ * thought.
+ */
+export const FIRST_CHUNK_CHARS = 110;
+
 /** Below this, a trailing fragment is merged backwards instead of left alone. */
 const MIN_TRAILING_CHARS = 40;
 
@@ -36,23 +58,33 @@ const MIN_TRAILING_CHARS = 40;
  *
  * Returns a single chunk for short text, so an ordinary reply is unaffected.
  */
-export function splitForSpeech(text: string, maxChars: number = MAX_CHUNK_CHARS): string[] {
+export function splitForSpeech(
+  text: string,
+  maxChars: number = MAX_CHUNK_CHARS,
+  firstMaxChars: number = Math.min(FIRST_CHUNK_CHARS, maxChars),
+): string[] {
   const cleaned = text.trim();
   if (cleaned.length === 0) return [];
-  if (cleaned.length <= maxChars) return [cleaned];
+  // Short enough to say in one go and still start quickly. Splitting here would
+  // add a seam and save nothing.
+  if (cleaned.length <= firstMaxChars) return [cleaned];
 
   const chunks: string[] = [];
   let current = '';
 
+  /** The first chunk gets the tight budget; everything after it the normal one. */
+  const budget = () => (chunks.length === 0 ? firstMaxChars : maxChars);
+
   for (const sentence of splitIntoSentences(cleaned)) {
     // A single sentence longer than the budget gets broken on word boundaries;
     // running past the limit would defeat the point.
-    const pieces = sentence.length > maxChars ? breakOnWords(sentence, maxChars) : [sentence];
+    const pieces =
+      sentence.length > budget() ? breakOnWords(sentence, budget(), maxChars) : [sentence];
 
     for (const piece of pieces) {
       if (current.length === 0) {
         current = piece;
-      } else if (current.length + 1 + piece.length <= maxChars) {
+      } else if (current.length + 1 + piece.length <= budget()) {
         current = `${current} ${piece}`;
       } else {
         chunks.push(current);
@@ -65,11 +97,14 @@ export function splitForSpeech(text: string, maxChars: number = MAX_CHUNK_CHARS)
 
   // A stray "Yes." on its own sounds like an afterthought; glue it to the
   // sentence it belongs with — but never past the budget, or the merge would
-  // undo a split that was made for a reason.
+  // undo a split that was made for a reason. Merging back into the FIRST chunk
+  // has to respect the tighter opening budget, since that is the one protecting
+  // time-to-first-sound.
   if (chunks.length > 1) {
     const last = chunks[chunks.length - 1];
     const previous = chunks[chunks.length - 2];
-    if (last.length < MIN_TRAILING_CHARS && previous.length + 1 + last.length <= maxChars) {
+    const limit = chunks.length === 2 ? firstMaxChars : maxChars;
+    if (last.length < MIN_TRAILING_CHARS && previous.length + 1 + last.length <= limit) {
       chunks.pop();
       chunks[chunks.length - 1] = `${previous} ${last}`;
     }
@@ -94,15 +129,21 @@ function splitIntoSentences(text: string): string[] {
     .filter((sentence) => sentence.length > 0);
 }
 
-/** Last resort for a sentence with no usable boundary inside the budget. */
-function breakOnWords(sentence: string, maxChars: number): string[] {
+/**
+ * Last resort for a sentence with no usable boundary inside the budget.
+ *
+ * The first piece may have a tighter budget than the rest — a run-on sentence
+ * at the very start of a reply still gets a quick opening piece.
+ */
+function breakOnWords(sentence: string, firstMaxChars: number, maxChars: number): string[] {
   const pieces: string[] = [];
   let current = '';
 
   for (const word of sentence.split(/\s+/)) {
+    const budget = pieces.length === 0 ? firstMaxChars : maxChars;
     if (current.length === 0) {
       current = word;
-    } else if (current.length + 1 + word.length <= maxChars) {
+    } else if (current.length + 1 + word.length <= budget) {
       current = `${current} ${word}`;
     } else {
       pieces.push(current);

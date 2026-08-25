@@ -1,9 +1,11 @@
 import {
   AudioModule,
-  RecordingPresets,
+  AudioQuality,
+  IOSOutputFormat,
   setAudioModeAsync,
   useAudioRecorder,
   useAudioRecorderState,
+  type RecordingOptions,
 } from 'expo-audio';
 import { useCallback, useRef } from 'react';
 
@@ -35,11 +37,51 @@ import { MIN_AUDIO_BYTES, voiceError, type RecordedAudio } from './types';
 /** Recorder state is polled this often — fast enough for a live level meter. */
 const STATE_POLL_MS = 100;
 
+/**
+ * How this app records: one channel, 22 kHz, 32 kbps AAC.
+ *
+ * NOT `RecordingPresets.HIGH_QUALITY`, which is 44.1 kHz STEREO at 128 kbps —
+ * studio settings for a job that is one person talking into a phone. Measured on
+ * the same eight-second utterance:
+ *
+ *   HIGH_QUALITY   135 KB on disk → 180 KB of base64 to upload
+ *   this preset     39 KB on disk →  52 KB of base64 to upload
+ *
+ * The transcript came back CHARACTER-IDENTICAL from the live endpoint. Speech
+ * recognition resamples to 16 kHz mono internally regardless, so the extra
+ * 128 KB buys nothing and costs upload time on every single turn — which on a
+ * phone's upstream is the part of transcription a person actually waits for.
+ */
+const SPEECH_RECORDING: RecordingOptions = {
+  isMeteringEnabled: true,
+  extension: '.m4a',
+  sampleRate: 22_050,
+  numberOfChannels: 1,
+  bitRate: 32_000,
+  android: { outputFormat: 'mpeg4', audioEncoder: 'aac' },
+  ios: {
+    outputFormat: IOSOutputFormat.MPEG4AAC,
+    audioQuality: AudioQuality.MEDIUM,
+    linearPCMBitDepth: 16,
+    linearPCMIsBigEndian: false,
+    linearPCMIsFloat: false,
+  },
+  web: { mimeType: 'audio/webm', bitsPerSecond: 32_000 },
+};
+
 export type PermissionOutcome = 'granted' | 'denied' | 'blocked';
 
 export type StopOutcome =
   | { ok: true; audio: RecordedAudio }
   | { ok: false; kind: 'didNotStart' | 'silent' };
+
+/** One reading of the live input, taken straight off the recorder. */
+export type MicSample = {
+  /** dBFS, or null when the recorder is not reporting a level. */
+  level: number | null;
+  durationMs: number;
+  isRecording: boolean;
+};
 
 export type Microphone = {
   isRecording: boolean;
@@ -47,21 +89,39 @@ export type Microphone = {
   durationMs: number;
   /** Live input level, roughly -160 (silence) to 0 (loud). Drives the meter. */
   metering: number | null;
+  /**
+   * The same numbers, read SYNCHRONOUSLY and without a re-render.
+   *
+   * Endpointing runs off this rather than off `metering`, because deciding when
+   * someone stopped talking should not be paced by React's render loop. It also
+   * lets the listening loop sample faster than the state poll when it wants to.
+   */
+  sample: () => MicSample;
   /** Asks for permission, prompting if we are allowed to. */
   ensurePermission: () => Promise<PermissionOutcome>;
   start: () => Promise<void>;
   stop: () => Promise<StopOutcome>;
+  /**
+   * Resolves once the audio session is back in playback mode.
+   *
+   * `stop()` starts that switch but does not wait for it, so transcription can
+   * begin immediately. Anything about to play audio awaits this first.
+   */
+  readyForPlayback: () => Promise<void>;
 };
 
 export function useMicrophone(): Microphone {
   // Metering on: without it there is no way to show a person that the mic is
-  // actually hearing them, which is exactly the reassurance missing before.
-  const recorder = useAudioRecorder({ ...RecordingPresets.HIGH_QUALITY, isMeteringEnabled: true });
+  // actually hearing them, and — since this app decides for itself when someone
+  // has finished speaking — no way to hear the end of a turn either.
+  const recorder = useAudioRecorder(SPEECH_RECORDING);
   const state = useAudioRecorderState(recorder, STATE_POLL_MS);
 
   /** Resolves when `start()` has genuinely begun recording. */
   const pendingStartRef = useRef<Promise<void> | null>(null);
   const startedRef = useRef(false);
+  /** The audio-mode switch back to playback, once `stop()` has kicked it off. */
+  const playbackModeRef = useRef<Promise<void> | null>(null);
 
   const ensurePermission = useCallback(async (): Promise<PermissionOutcome> => {
     const current = await AudioModule.getRecordingPermissionsAsync();
@@ -87,6 +147,7 @@ export function useMicrophone(): Microphone {
       try {
         // Mode before prepare: iOS will not open an input on a session that is
         // still configured for playback.
+        playbackModeRef.current = null;
         await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
         await recorder.prepareToRecordAsync();
         recorder.record();
@@ -123,8 +184,15 @@ export function useMicrophone(): Microphone {
       throw voiceError('recordFailed', thrown);
     }
 
-    // Back to playback mode before anything tries to speak.
-    await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
+    // Back to playback mode before anything tries to speak — but NOT awaited
+    // here. This used to sit between the person finishing their sentence and
+    // the upload starting, for no reason: nothing plays for another few seconds
+    // while speech is transcribed and the reply is written. `readyForPlayback()`
+    // is where that wait belongs, and by then it has long since finished.
+    playbackModeRef.current = setAudioModeAsync({
+      allowsRecording: false,
+      playsInSilentMode: true,
+    });
 
     const uri = recorder.uri;
     if (uri === null) return { ok: false, kind: 'silent' };
@@ -135,13 +203,46 @@ export function useMicrophone(): Microphone {
     };
   }, [recorder]);
 
+  const sample = useCallback((): MicSample => {
+    try {
+      const status = recorder.getStatus();
+      return {
+        level: typeof status.metering === 'number' ? status.metering : null,
+        durationMs: status.durationMillis,
+        isRecording: status.isRecording,
+      };
+    } catch {
+      // A recorder mid-teardown can throw here. A missing sample is a sample
+      // that says nothing, not a reason to bring down the conversation.
+      return { level: null, durationMs: 0, isRecording: false };
+    }
+  }, [recorder]);
+
+  const readyForPlayback = useCallback(async () => {
+    if (playbackModeRef.current === null) {
+      // Nothing recorded this turn, so nothing started the switch. Do it now.
+      playbackModeRef.current = setAudioModeAsync({
+        allowsRecording: false,
+        playsInSilentMode: true,
+      });
+    }
+    try {
+      await playbackModeRef.current;
+    } catch {
+      // The session may already be in playback mode. Try to speak anyway —
+      // failing here would turn a maybe into a definitely.
+    }
+  }, []);
+
   return {
     isRecording: state.isRecording,
     durationMs: state.durationMillis,
     metering: state.metering ?? null,
+    sample,
     ensurePermission,
     start,
     stop,
+    readyForPlayback,
   };
 }
 
