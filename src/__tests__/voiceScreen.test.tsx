@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
 
 import {
   LEVEL_METER_TEST_ID,
@@ -9,6 +9,7 @@ import {
 } from '../components/MicButton';
 import { ApiClient } from '../api/client';
 import type { VoiceDependencies } from '../state/VoiceSession';
+import type { MicSample } from '../voice/useMicrophone';
 import type { VoiceProvider } from '../voice/types';
 import { onTop, renderApp, sayToAi } from '../test-utils/renderApp';
 
@@ -41,15 +42,52 @@ function fakeVoice(overrides: Partial<VoiceProvider> = {}) {
     play: jest.fn(async (uri: string) => {
       played.push(uri);
     }),
+    log: () => undefined,
+    // Short hangover so a test does not wait out a real 1.3s pause.
+    endpointConfig: { silenceHangoverMs: 300, minUtteranceMs: 100, meteringGraceMs: 300 },
+    sample: () => ({ ...reading }),
+    sampleIntervalMs: 1,
   };
 
   return { provider, played, dependencies };
 }
 
-/** Tap to start, speak, tap to stop — the interaction a person performs. */
+/**
+ * The listening loop reads the microphone on its OWN timer rather than on
+ * React's render clock, so a test drives it by handing the session a `sample()`
+ * it controls and letting a tick or two actually elapse.
+ *
+ * `sampleIntervalMs: 1` keeps that wait to a few real milliseconds.
+ */
+const reading: MicSample = { level: -160, durationMs: 0, isRecording: true };
+
+beforeEach(() => {
+  reading.level = -160;
+  reading.durationMs = 0;
+  reading.isRecording = true;
+});
+
+/** Puts a level on the microphone and lets the loop actually read it. */
+async function sample(level: number | null, elapsedMs: number) {
+  reading.level = level;
+  reading.durationMs = elapsedMs;
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  });
+}
+
+/**
+ * Start a conversation and say one thing.
+ *
+ * There is no second tap: the turn ends when the person goes quiet, which is
+ * the whole point of conversation mode.
+ */
 async function tapSpeakTap() {
-  await fireEvent.press(onTop(MIC_TEST_ID)); // start
-  await fireEvent.press(onTop(MIC_TEST_ID)); // stop
+  await fireEvent.press(onTop(MIC_TEST_ID));
+  await sample(-20, 200);
+  await sample(-20, 400);
+  await sample(-55, 600);
+  await sample(-55, 900);
 }
 
 describe('the mic sits beside typing, not instead of it', () => {
@@ -118,22 +156,36 @@ describe('speaking a turn', () => {
     expect(onTop(VOICE_STAGE_TEST_ID)).toHaveTextContent(/on screen above/i);
   });
 
+  /**
+   * On the SINGLE-TURN path only. Someone who tapped to send is owed an answer
+   * about why nothing came back.
+   *
+   * In a conversation the same silence means the opposite — it is a pause, and
+   * saying "I could not make out any words" every time somebody stops to think
+   * would make the mode unbearable. That behaviour is held in
+   * conversationMode.test.tsx.
+   */
   it('says it heard nothing when the transcript is empty', async () => {
     const voice = fakeVoice({ transcribe: jest.fn(async () => '') });
+    await sample(null, 0); // no metering → the mic reverts to tap-to-send
     await renderApp({ voice: voice.dependencies });
 
-    await tapSpeakTap();
+    await fireEvent.press(onTop(MIC_TEST_ID));
+    await sample(null, 200);
+    await sample(null, 400);
 
-    await waitFor(() => expect(onTop(VOICE_STAGE_TEST_ID)).toHaveTextContent(/could not make out any words/i));
+    await waitFor(() =>
+      expect(onTop(VOICE_STAGE_TEST_ID)).toHaveTextContent(/could not make out any words/i),
+    );
   });
 });
 
 describe('the mic explains itself', () => {
-  it('names what holding it does', async () => {
+  it('names what tapping it does', async () => {
     await renderApp({ voice: fakeVoice().dependencies });
     const mic = onTop(MIC_TEST_ID);
-    expect(mic).toHaveProp('accessibilityLabel', 'Tap to speak');
-    expect(mic.props.accessibilityHint).toMatch(/tap once to start/i);
+    expect(mic).toHaveProp('accessibilityLabel', 'Start talking');
+    expect(mic.props.accessibilityHint).toMatch(/hands-free/i);
   });
 
   it('tells a screen reader when voice is not available', async () => {
@@ -152,8 +204,8 @@ describe('tap to start, tap to stop', () => {
     await fireEvent.press(onTop(MIC_TEST_ID));
 
     await waitFor(() => expect(onTop(VOICE_STAGE_TEST_ID)).toHaveTextContent(/Listening/i));
-    // The button itself changes to a stop, so the way out is unmistakable.
-    expect(onTop(MIC_TEST_ID)).toHaveProp('accessibilityLabel', 'Stop recording and send');
+    // The button becomes the way out, so leaving is unmistakable.
+    expect(onTop(MIC_TEST_ID)).toHaveProp('accessibilityLabel', 'End the conversation');
   });
 
   it('shows a live level meter while listening, so silence is visible', async () => {
@@ -177,31 +229,40 @@ describe('tap to start, tap to stop', () => {
 
     await fireEvent.press(onTop(MIC_TEST_ID));
 
-    // The old press-and-hold sent on release. One tap now only starts.
+    // One tap opens the conversation; nothing is sent until they speak.
     expect(voice.provider.transcribe).not.toHaveBeenCalled();
   });
 
   it('says the recording never started, rather than blaming the person’s voice', async () => {
+    // The single-turn path: no metering, so the mic reverts to tap-to-send and
+    // a failed start is reported precisely.
     const voice = fakeVoice();
     voice.dependencies.stopRecording = jest.fn(async () => ({
       ok: false as const,
       kind: 'didNotStart' as const,
     }));
+    await sample(null, 0);
     await renderApp({ voice: voice.dependencies });
 
     await fireEvent.press(onTop(MIC_TEST_ID));
-    await fireEvent.press(onTop(MIC_TEST_ID));
+    await sample(null, 200);
+    await sample(null, 400);
 
     await waitFor(() => expect(onTop(VOICE_STAGE_TEST_ID)).toHaveTextContent(/had not started/i));
     expect(onTop(VOICE_STAGE_TEST_ID)).not.toHaveTextContent(/could not make out any words/i);
   });
 
   it('says the capture was empty when the mic produced no audio', async () => {
+    // Single-turn path — in a conversation an empty capture is a pause, not an
+    // error, and is covered in conversationMode.test.tsx.
     const voice = fakeVoice();
     voice.dependencies.measureBytes = jest.fn(async () => 300);
+    await sample(null, 0);
     await renderApp({ voice: voice.dependencies });
 
-    await tapSpeakTap();
+    await fireEvent.press(onTop(MIC_TEST_ID));
+    await sample(null, 200);
+    await sample(null, 400);
 
     await waitFor(() => expect(onTop(VOICE_STAGE_TEST_ID)).toHaveTextContent(/came back empty/i));
     expect(voice.provider.transcribe).not.toHaveBeenCalled();

@@ -9,24 +9,49 @@ export const VOICE_STAGE_TEST_ID = 'voice-stage';
 export const LEVEL_METER_TEST_ID = 'voice-level';
 
 /**
- * Tap to start. Tap to stop.
+ * One tap starts a conversation. One tap ends it.
  *
- * IT USED TO BE PRESS-AND-HOLD, AND THAT WAS THE BUG. `onPressIn` began an
- * async start (permission, audio mode, prepare) and `onPressOut` stopped it — so
- * a tap stopped a recording that had not begun, and the first tap of all raced
- * the permission dialog. Nothing was ever recorded, and the app blamed the
- * person's voice for it.
+ * IN BETWEEN THERE IS NO TAPPING. It listens, notices when you have stopped
+ * talking, sends, speaks the reply, and listens again. The point is that a
+ * person can put the phone down and talk — the old tap-send-tap-send rhythm
+ * made every turn a small piece of admin.
  *
- * Tap-to-toggle removes the race by construction and is the more forgiving
- * pattern anyway: nobody has to keep a finger down while finding their words,
- * which is precisely when someone talking about something hard would pause.
+ * (Before that it was press-and-hold, which never worked at all: `onPressIn`
+ * began an async start and `onPressOut` stopped a recording that had not begun.
+ * Both of those interaction bugs are why this button is now the simplest thing
+ * that can work — a toggle.)
  */
 export function MicButton() {
-  const { stage, isAvailable, isBusy, startListening, stopListeningAndRespond } =
-    useVoiceSession();
+  const {
+    isAvailable,
+    isBusy,
+    inConversation,
+    startConversation,
+    endConversation,
+    handsFreeAvailable,
+    stage,
+    startListening,
+    stopListeningAndRespond,
+  } = useVoiceSession();
 
+
+  // When a device reports no input levels we cannot tell when someone has
+  // stopped talking, so the same button reverts to the tap-to-send behaviour
+  // the fallback message describes. One control, two honest behaviours.
   const recording = stage === 'recording';
-  const label = recording ? 'Stop recording and send' : 'Tap to speak';
+  const active = handsFreeAvailable ? inConversation : recording;
+
+  const label = handsFreeAvailable
+    ? inConversation
+      ? 'End the conversation'
+      : 'Start talking'
+    : recording
+      ? 'Send what you said'
+      : 'Tap to speak';
+
+  const onPress = handsFreeAvailable
+    ? () => void (inConversation ? endConversation() : startConversation())
+    : () => void (recording ? stopListeningAndRespond() : startListening());
 
   return (
     <View style={styles.wrapper}>
@@ -34,23 +59,28 @@ export function MicButton() {
         accessibilityRole="button"
         accessibilityLabel={label}
         accessibilityHint={
-          isAvailable
-            ? 'Tap once to start recording, speak, then tap again when you are finished.'
-            : 'Speaking out loud is not available in this build. You can type instead.'
+          !isAvailable
+            ? 'Speaking out loud is not available in this build. You can type instead.'
+            : !handsFreeAvailable
+              ? 'Tap to start recording, then tap again to send.'
+              : inConversation
+                ? 'Ends hands-free conversation. You can still type.'
+                : 'Starts a hands-free conversation. Just talk — it sends when you stop, and listens again after it answers.'
         }
-        accessibilityState={{ disabled: isBusy, busy: isBusy }}
-        disabled={isBusy}
-        onPress={() => void (recording ? stopListeningAndRespond() : startListening())}
+        // Deliberately NOT disabled mid-turn: leaving must always be possible,
+        // including while it is thinking or speaking.
+        accessibilityState={{ busy: isBusy }}
+        onPress={onPress}
         testID={MIC_TEST_ID}
         style={({ pressed }) => [
           styles.button,
-          recording && styles.recording,
+          active && styles.recording,
           pressed && styles.pressed,
-          (isBusy || !isAvailable) && styles.muted,
+          !isAvailable && styles.muted,
         ]}
       >
-        <AppText role="bodyStrong" tone={recording ? 'inverse' : 'action'}>
-          {recording ? '■ Stop' : '🎤'}
+        <AppText role="bodyStrong" tone={active ? 'inverse' : 'action'}>
+          {handsFreeAvailable ? (active ? '■ End' : '🎤 Talk') : active ? '■ Send' : '🎤'}
         </AppText>
       </Pressable>
     </View>
@@ -66,10 +96,10 @@ export function MicButton() {
  * nothing at all.
  */
 export function VoiceStage() {
-  const { stage, error, elapsedMs, level } = useVoiceSession();
+  const { stage, error, elapsedMs, level, inConversation } = useVoiceSession();
 
   const recording = stage === 'recording';
-  const text = STAGE_TEXT[stage];
+  const text = inConversation ? CONVERSATION_TEXT[stage] : STAGE_TEXT[stage];
   if (error === null && text === null) return null;
 
   return (
@@ -138,6 +168,19 @@ export function formatElapsed(ms: number): string {
 const STAGE_TEXT: Record<string, string | null> = {
   idle: null,
   recording: 'Listening…',
+  transcribing: 'Catching what you said…',
+  thinking: 'Thinking about it…',
+  speaking: 'Speaking…',
+};
+
+/**
+ * In a conversation the person needs to know it is still THEIR turn to talk,
+ * and that it will come back to them. "Listening — just talk" says both; a bare
+ * "Listening…" leaves people waiting for a prompt that is not coming.
+ */
+const CONVERSATION_TEXT: Record<string, string | null> = {
+  idle: 'In conversation',
+  recording: 'Listening — just talk',
   transcribing: 'Catching what you said…',
   thinking: 'Thinking about it…',
   speaking: 'Speaking…',
