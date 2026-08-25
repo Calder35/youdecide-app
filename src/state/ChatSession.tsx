@@ -96,10 +96,19 @@ export function ChatSessionProvider({
   client,
   /** Tests set this to 0 so they are not waiting on a fake typing delay. */
   thinkingDelayMs = STUB_THINKING_MS,
+  /**
+   * Whether spoken turns stream. Defaults to the build flag.
+   *
+   * A prop as well as a flag because both paths are real and both have to stay
+   * tested: streaming is what ships, and the plain `/v1/chat` path is what a
+   * turn falls back to if the stream is ever switched off.
+   */
+  streaming = VOICE_STREAMING_ENABLED,
 }: {
   children: ReactNode;
   client?: ApiClient;
   thinkingDelayMs?: number;
+  streaming?: boolean;
 }) {
   const [api] = useState(() => client ?? new ApiClient());
 
@@ -187,7 +196,7 @@ export function ChatSessionProvider({
     [deliver],
   );
 
-  const streamingAvailable = api.isConnected && VOICE_STREAMING_ENABLED;
+  const streamingAvailable = api.isConnected && streaming;
 
   const sendStreaming = useCallback(
     async (
@@ -233,6 +242,15 @@ export function ChatSessionProvider({
             escalationNote: reply.escalationNote,
           },
         ]);
+
+        // The reply stopped part-way through, after some of it had already been
+        // said out loud. What there is stays — on screen and spoken — and the
+        // conversation carries on; this only explains the missing end of it.
+        if (reply.cutShort !== null) {
+          setError(
+            'That answer stopped part-way through — the part above is what came back. Ask again and I will pick it up.',
+          );
+        }
 
         return reply.reply;
       } catch (thrown) {

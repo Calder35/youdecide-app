@@ -108,10 +108,9 @@ describe('what it asks the backend for', () => {
     expect(JSON.parse(xhr.body ?? '{}')).toMatchObject({ mode: 'voice' });
   });
 
-  it('says it can read either wire format and lets the server choose', () => {
+  it('asks for server-sent events, which is what the endpoint sends', () => {
     const { xhr } = begin();
     expect(xhr.headers.Accept).toMatch(/event-stream/);
-    expect(xhr.headers.Accept).toMatch(/ndjson/);
   });
 
   it('refuses to stream with no backend, rather than pretending', async () => {
@@ -234,10 +233,26 @@ describe('when the backend reports a failure mid-stream', () => {
     expect(readStreamError({ type: 'sentence', text: 'fine' })).toBeNull();
   });
 
-  it('fails the turn rather than returning half a reply as though it were whole', async () => {
+  /**
+   * An error arrives as an EVENT once the headers have gone out, and by then
+   * some of the reply may already have been spoken out loud. Binning it would
+   * be a worse lie than an incomplete answer — the person heard those words
+   * either way — so the turn keeps what there is and says the rest stopped.
+   */
+  it('keeps what was already said, and reports that it stopped early', async () => {
     const { xhr, result } = begin();
-    xhr.emit('{"type":"sentence","text":"I was saying..."}\n');
-    xhr.emit('{"type":"error","message":"the model fell over"}\n');
+    xhr.emit('data: {"type": "sentence", "seq": 0, "text": "I was saying..."}\n\n');
+    xhr.emit('data: {"type": "error", "code": "upstream_unavailable", "message": "the model fell over"}\n\n');
+    xhr.complete();
+
+    const reply = await result;
+    expect(reply.reply).toBe('I was saying...');
+    expect(reply.cutShort).toMatch(/fell over/);
+  });
+
+  it('fails outright when it produced nothing at all', async () => {
+    const { xhr, result } = begin();
+    xhr.emit('data: {"type": "error", "code": "empty_reply", "message": "nothing to say"}\n\n');
     xhr.complete();
 
     await expect(result).rejects.toBeDefined();
