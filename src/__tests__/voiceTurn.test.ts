@@ -409,7 +409,7 @@ describe('speaking is reliable, or says why it was not', () => {
 
     expect(h.provider.synthesize).toHaveBeenCalledTimes(2);
     expect(lines.join('\n')).toMatch(/retrying once/);
-    expect(lines.join('\n')).toMatch(/speak failed on chunk 1\/1 after 0 spoken — .*tts really down/);
+    expect(lines.join('\n')).toMatch(/speak failed on piece 1 after 0 spoken — .*tts really down/);
     expect(h.errors[0].kind).toBe('speakFailed');
   });
 });
@@ -532,3 +532,127 @@ const LONG_SPOKEN_REPLY =
   'Has anything formal come from your lender yet, like a notice of default? ' +
   'Knowing that changes the timeline, and it changes which doors are still open to you. ' +
   'Either way, we can work out what the house would realistically bring in today.';
+
+/**
+ * A turn where the reply is streamed.
+ *
+ * The claim being tested is a timing one, and it is the entire reason the
+ * streaming endpoint is being built: the FIRST sentence is synthesised and
+ * spoken while the model is still writing the rest. If that is not true, all
+ * this bought was complexity.
+ */
+describe('a streamed turn speaks before the reply is finished', () => {
+  /** A brain that hands over sentences on demand and finishes when told. */
+  function streamingBrain(sentences: string[]) {
+    let emit: ((sentence: string) => void) | null = null;
+    let finish: (() => void) | null = null;
+
+    const streamToBrain = async (_transcript: string, onSentence: (s: string) => void) => {
+      emit = onSentence;
+      await new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+      return sentences.join(' ');
+    };
+
+    return {
+      streamToBrain,
+      say: (sentence: string) => {
+        sentences.push(sentence);
+        emit?.(sentence);
+      },
+      end: () => finish?.(),
+    };
+  }
+
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
+
+  it('synthesises sentence one while the brain is still writing', async () => {
+    const brain = streamingBrain([]);
+    const h = harness({ streamToBrain: brain.streamToBrain });
+
+    const turn = runVoiceTurn(AUDIO, h.deps);
+    await settle();
+
+    brain.say('That happens a lot.');
+    await settle();
+
+    // Spoken already — and the brain has not returned.
+    expect(h.spoken).toEqual(['That happens a lot.']);
+    expect(h.played).toHaveLength(1);
+
+    brain.say('Has anything come from your lender?');
+    brain.end();
+    await turn;
+
+    expect(h.played).toHaveLength(2);
+  });
+
+  it('says the whole reply exactly once, not twice', async () => {
+    // The assembled reply comes back at the end too. Speaking that as well
+    // would repeat everything the person just heard.
+    const brain = streamingBrain([]);
+    const h = harness({ streamToBrain: brain.streamToBrain });
+
+    const turn = runVoiceTurn(AUDIO, h.deps);
+    await settle();
+    brain.say('One.');
+    brain.say('Two.');
+    brain.end();
+    await turn;
+
+    expect(h.spoken).toEqual(['One.', 'Two.']);
+  });
+
+  it('stops saying "thinking" once it is audibly talking', async () => {
+    const brain = streamingBrain([]);
+    const h = harness({ streamToBrain: brain.streamToBrain });
+
+    const turn = runVoiceTurn(AUDIO, h.deps);
+    await settle();
+    brain.say('Speaking now.');
+    await settle();
+
+    expect(h.stages[h.stages.length - 1]).toBe('speaking');
+
+    brain.end();
+    await turn;
+    expect(h.stages[h.stages.length - 1]).toBe('idle');
+  });
+
+  it('prefers the stream and does not also send the turn the plain way', async () => {
+    const brain = streamingBrain([]);
+    const h = harness({ streamToBrain: brain.streamToBrain });
+
+    const turn = runVoiceTurn(AUDIO, h.deps);
+    await settle();
+    brain.say('Only once.');
+    brain.end();
+    await turn;
+
+    // Asking twice would charge the person two answers to one question.
+    expect(h.deps.sendToBrain).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the ordinary path when there is no stream', async () => {
+    const h = harness();
+    await runVoiceTurn(AUDIO, h.deps);
+
+    expect(h.deps.sendToBrain).toHaveBeenCalled();
+    expect(h.played.length).toBeGreaterThan(0);
+  });
+
+  it('reports a stream that dies part-way, and speaks nothing more', async () => {
+    const failing = async (_t: string, onSentence: (s: string) => void) => {
+      onSentence('I was saying...');
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      throw new Error('the stream died');
+    };
+    const h = harness({ streamToBrain: failing });
+
+    await expect(runVoiceTurn(AUDIO, h.deps)).rejects.toThrow('the stream died');
+    const spokenAtFailure = h.played.length;
+    await settle();
+    expect(h.played.length).toBe(spokenAtFailure);
+  });
+});

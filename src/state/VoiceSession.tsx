@@ -267,6 +267,14 @@ export function VoiceSessionProvider({
       // will be LISTENED to, so it can answer in a sentence or two instead of
       // the paragraphs that read well but take thirteen seconds to say.
       sendToBrain: (transcript) => chat.send(transcript, { mode: 'voice' }),
+      // AND, when the backend can stream it, the same turn delivered a sentence
+      // at a time so speaking can start before the reply is finished. Voice
+      // only: it buys time-to-first-SOUND, and typed chat has no equivalent to
+      // gain. Absent, everything below behaves exactly as it did before.
+      streamToBrain: chat.streamingAvailable
+        ? (transcript, onSentence) =>
+            chat.sendStreaming(transcript, { mode: 'voice', onSentence })
+        : undefined,
     });
   }, [provider, dependencies, microphone, stopRecording, chat, report, log]);
 

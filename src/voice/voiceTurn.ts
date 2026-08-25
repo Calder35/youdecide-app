@@ -1,11 +1,11 @@
 import { VoiceError, voiceError, type RecordedAudio, type VoiceProvider } from './types';
 import { MIN_AUDIO_BYTES, MIN_RECORDING_MS } from './types';
-import { splitForSpeech } from './speechChunks';
+import { createSpeechQueue } from './speechQueue';
 
 /**
  * One spoken turn, as a pure function of its dependencies.
  *
- *   hold the mic → speech → text → the existing /v1/chat brain → text → speech
+ *   hold the mic → speech → text → the /v1/chat brain → text → speech
  *
  * The native pieces (recorder, player) are injected, so the whole sequence —
  * including every way it can fail — is testable without a device. That matters
@@ -29,6 +29,22 @@ export type VoiceTurnDeps = {
   provider: VoiceProvider;
   /** Hands the transcript to the existing chat brain; resolves with the reply. */
   sendToBrain: (transcript: string) => Promise<string | null>;
+  /**
+   * The streaming brain, when there is one.
+   *
+   * Same job as `sendToBrain`, except it calls back with each sentence as the
+   * model writes it and resolves with the whole reply at the end. When present
+   * it is preferred, because it is what lets speech start before the reply is
+   * finished; when absent the turn behaves exactly as it always has.
+   *
+   * A failure here does NOT fall back to `sendToBrain`. Sending the same turn
+   * twice would charge the person two answers to one question, and the second
+   * would arrive after they had already heard part of the first.
+   */
+  streamToBrain?: (
+    transcript: string,
+    onSentence: (sentence: string) => void,
+  ) => Promise<string | null>;
   play: (uri: string) => Promise<void>;
   onStage: (stage: VoiceTurnStage) => void;
   /** Shows the transcript in the conversation before the brain answers. */
@@ -137,20 +153,65 @@ export async function runVoiceTurn(
 
   onTranscript?.(transcript);
 
+  /**
+   * The speech queue is opened BEFORE the brain is asked.
+   *
+   * That ordering is the whole streaming change. Sentences can be handed
+   * straight to it as they are written, so synthesis of the first one overlaps
+   * generation of the second, instead of the person waiting out the entire
+   * reply in silence first.
+   */
+  let firstSoundAt: number | null = null;
+  const queue = createSpeechQueue({
+    synthesize: (text) => provider.synthesize(text),
+    play: deps.play,
+    onError,
+    log: deps.log,
+    now,
+    onFirstSound: (ttsFirstChunkMs, pieces) => {
+      firstSoundAt = now();
+      const toFirstSoundMs = firstSoundAt - startedAt;
+      deps.onTiming?.({ sttMs, chatMs, ttsFirstChunkMs, toFirstSoundMs, chunkCount: pieces });
+      deps.log?.(
+        `voice: timing stt=${sttMs}ms chat=${chatMs}ms tts1=${ttsFirstChunkMs}ms ` +
+          `(${pieces} chunk${pieces === 1 ? '' : 's'}) → first sound ${toFirstSoundMs}ms ` +
+          'after the mic stopped',
+      );
+    },
+  });
+
   let reply: string | null;
   const chatStarted = now();
   try {
     onStage('thinking');
-    reply = await sendToBrain(transcript);
-    chatMs = now() - chatStarted;
+    if (deps.streamToBrain !== undefined) {
+      // The stage flips to 'speaking' on the FIRST sentence rather than after
+      // the whole reply — otherwise the screen would still say "Thinking about
+      // it…" while it was audibly talking.
+      let spokenYet = false;
+      reply = await deps.streamToBrain(transcript, (sentence) => {
+        if (!spokenYet) {
+          spokenYet = true;
+          chatMs = now() - chatStarted;
+          onStage('speaking');
+        }
+        queue.push(sentence);
+      });
+      if (!spokenYet) chatMs = now() - chatStarted;
+    } else {
+      reply = await sendToBrain(transcript);
+      chatMs = now() - chatStarted;
+    }
   } catch (thrown) {
     // The brain failing is the chat layer's problem to report — it already
     // shows its own error and offers a retry. Voice does not double up on it.
+    queue.cancel();
     onStage('idle');
     throw thrown;
   }
 
   if (reply === null || reply.trim().length === 0) {
+    queue.cancel();
     onStage('idle');
     return transcript;
   }
@@ -159,138 +220,16 @@ export async function runVoiceTurn(
   // fails below costs them audio, not meaning — so it is reported gently and
   // the turn still counts as a success.
   onStage('speaking');
-  await speakInChunks(reply, deps, {
-    now,
-    onFirstSound: (ttsFirstChunkMs, chunkCount) => {
-      const toFirstSoundMs = now() - startedAt;
-      deps.onTiming?.({ sttMs, chatMs, ttsFirstChunkMs, toFirstSoundMs, chunkCount });
-      deps.log?.(
-        `voice: timing stt=${sttMs}ms chat=${chatMs}ms tts1=${ttsFirstChunkMs}ms ` +
-          `(${chunkCount} chunk${chunkCount === 1 ? '' : 's'}) → first sound ${toFirstSoundMs}ms ` +
-          'after the mic stopped',
-      );
-    },
-  });
+  // Streaming already pushed each sentence as it landed; pushing the assembled
+  // reply again would say the whole thing twice.
+  if (deps.streamToBrain === undefined) queue.push(reply);
+  queue.end();
+  await queue.done;
   onStage('idle');
 
   return transcript;
 }
 
-/**
- * How many chunks are kept in flight ahead of the one being spoken.
- *
- * One was not enough. With a lookahead of one, chunk N+1's synthesis begins
- * only when chunk N is ready to play — so a chunk that takes longer to
- * synthesise than the previous one takes to say leaves a gap mid-reply. Two in
- * flight covers that, and beyond two the requests just queue behind speech that
- * has not been said yet.
- */
-const SYNTHESIS_LOOKAHEAD = 2;
-
-/**
- * Speaks a reply a sentence at a time, synthesising ahead while it plays.
- *
- * The pipeline is the point. Later chunks are requested BEFORE the current one
- * plays, so the network work happens during the audio rather than before it. A
- * person hears the first sentence in about a second and a half instead of
- * waiting out the whole reply — 37 seconds, at the top end we measured.
- */
-async function speakInChunks(
-  reply: string,
-  deps: VoiceTurnDeps,
-  timing: { now: () => number; onFirstSound: (ttsMs: number, chunkCount: number) => void },
-): Promise<void> {
-  const { provider, play, onError } = deps;
-  const chunks = splitForSpeech(reply);
-
-  deps.log?.(`voice: speaking ${reply.length} chars in ${chunks.length} chunk(s)`);
-
-  /** One chunk, with a single retry — a blip should cost nothing visible. */
-  const synthesize = (chunk: string) =>
-    withOneRetry(
-      () => provider.synthesize(chunk),
-      (error) => deps.log?.(`voice: synthesize failed, retrying once — ${describe(error)}`),
-    );
-
-  const inFlight: (Promise<{ uri: string }> | null)[] = chunks.map(() => null);
-
-  /** Starts a chunk synthesising, if it exists and has not been started. */
-  const requestChunk = (index: number) => {
-    if (index >= chunks.length || inFlight[index] !== null) return;
-    const request = synthesize(chunks[index]);
-    // A chunk we may never reach — because an earlier one failed — must not
-    // surface as an unhandled rejection. Awaiting it below still throws.
-    request.catch(() => undefined);
-    inFlight[index] = request;
-  };
-
-  const speakStarted = timing.now();
-  for (let ahead = 0; ahead < SYNTHESIS_LOOKAHEAD; ahead += 1) requestChunk(ahead);
-  let spoken = 0;
-
-  for (let index = 0; index < chunks.length; index += 1) {
-    requestChunk(index);
-    const current = inFlight[index];
-    if (current === null) break;
-
-    let audio;
-    try {
-      audio = await current;
-    } catch (thrown) {
-      report(thrown, index);
-      return;
-    }
-
-    // Top the queue back up before playing, so the requests and the audio
-    // overlap rather than alternate.
-    for (let ahead = 1; ahead <= SYNTHESIS_LOOKAHEAD; ahead += 1) requestChunk(index + ahead);
-
-    try {
-      if (index === 0) timing.onFirstSound(timing.now() - speakStarted, chunks.length);
-      await play(audio.uri);
-      spoken += 1;
-    } catch (thrown) {
-      report(thrown, index);
-      return;
-    }
-  }
-
-  deps.log?.('voice: turn complete');
-
-  function report(thrown: unknown, index: number) {
-    // Anything already spoken is worth distinguishing from nothing spoken: one
-    // is a reply that stopped early, the other is a reply that never started.
-    const kind = spoken > 0 ? 'speakCutShort' : 'speakFailed';
-    const failure = asVoiceError(thrown, kind);
-    deps.log?.(
-      `voice: speak failed on chunk ${index + 1}/${chunks.length} after ${spoken} spoken — ${describe(
-        failure.cause ?? failure,
-      )}`,
-    );
-    onError(failure);
-  }
-}
-
 function asVoiceError(thrown: unknown, fallback: Parameters<typeof voiceError>[0]): VoiceError {
   return thrown instanceof VoiceError ? thrown : voiceError(fallback, thrown);
-}
-
-/** Runs `attempt`, and on failure runs it once more. */
-async function withOneRetry<T>(
-  attempt: () => Promise<T>,
-  onRetry: (error: unknown) => void,
-): Promise<T> {
-  try {
-    return await attempt();
-  } catch (thrown) {
-    onRetry(thrown);
-    return attempt();
-  }
-}
-
-/** A readable one-liner for a log, whatever was thrown. */
-function describe(thrown: unknown): string {
-  if (thrown instanceof VoiceError) return `${thrown.kind}: ${thrown.message}`;
-  if (thrown instanceof Error) return thrown.message;
-  return String(thrown);
 }
