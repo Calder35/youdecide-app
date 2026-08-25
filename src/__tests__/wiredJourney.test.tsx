@@ -1,13 +1,12 @@
 import { screen, waitFor } from '@testing-library/react-native';
 
 import { API_STATUS_TEST_ID } from '../components/ApiStatusNote';
-import { GET_HUMAN_TEST_ID } from '../components/GetHumanBar';
 import { createFakeBackend } from '../test-utils/fakeBackend';
 import {
   giveRequiredConsents,
   onTop,
   pressOnTop,
-  renderApp,
+  renderIntake,
   typeInto,
 } from '../test-utils/renderApp';
 
@@ -38,7 +37,7 @@ async function walkIntake() {
 describe('the seller intake, wired to the test API', () => {
   it('creates the seller, records consents, opens a workspace, and requests a human', async () => {
     const backend = createFakeBackend();
-    await renderApp(backend.client);
+    await renderIntake({ client: backend.client });
 
     await walkIntake();
     await waitFor(() => expect(onTop('api-status-ids')).toBeOnTheScreen());
@@ -63,7 +62,7 @@ describe('the seller intake, wired to the test API', () => {
 
   it("sends the seller's own answers, not the sample data", async () => {
     const backend = createFakeBackend();
-    await renderApp(backend.client);
+    await renderIntake({ client: backend.client });
     await walkIntake();
     await waitFor(() => expect(onTop('api-status-ids')).toBeOnTheScreen());
 
@@ -82,7 +81,7 @@ describe('the seller intake, wired to the test API', () => {
 
   it('asks for a LICENSED human, and carries the seller\'s note as the reason', async () => {
     const backend = createFakeBackend();
-    await renderApp(backend.client);
+    await renderIntake({ client: backend.client });
     await walkIntake();
     await waitFor(() => expect(onTop('api-status-ids')).toBeOnTheScreen());
 
@@ -100,7 +99,7 @@ describe('the seller intake, wired to the test API', () => {
 
   it("shows the backend's own audit trail, in the seller's language", async () => {
     const backend = createFakeBackend();
-    await renderApp(backend.client);
+    await renderIntake({ client: backend.client });
     await walkIntake();
     await waitFor(() => expect(onTop('api-status-ids')).toBeOnTheScreen());
 
@@ -118,7 +117,7 @@ describe('the seller intake, wired to the test API', () => {
 describe('when the backend is unreachable', () => {
   it('still lets the seller finish and ask for a human, and says what happened', async () => {
     const backend = createFakeBackend({ networkDown: true });
-    await renderApp(backend.client);
+    await renderIntake({ client: backend.client });
 
     await pressOnTop('cta-continue');
     await typeInto('field-email', 'jordan@example.com');
@@ -131,7 +130,11 @@ describe('when the backend is unreachable', () => {
     await pressOnTop('cta-continue-anyway');
     expect(screen.getByText('Tell us about your sale')).toBeOnTheScreen();
 
-    await pressOnTop(GET_HUMAN_TEST_ID);
+    // Reach the handoff from the plan — there is no standing human button now.
+    await pressOnTop('cta-continue'); // → OnePercent
+    await pressOnTop('cta-continue'); // → PropertyWorkspace
+    await pressOnTop('cta-continue'); // → AiPlan
+    await pressOnTop('cta-request-human');
     await pressOnTop('cta-request-human');
     await waitFor(() => expect(onTop('status-request')).toBeOnTheScreen());
     expect(onTop('request-sync-state')).toHaveTextContent(/not delivered/i);
@@ -140,12 +143,12 @@ describe('when the backend is unreachable', () => {
 
 describe('an offline build', () => {
   it('sends nothing and says so', async () => {
-    await renderApp(); // no client → offline
+    await renderIntake(); // no client → offline
     expect(onTop(API_STATUS_TEST_ID)).toHaveTextContent(/Offline — nothing is sent/);
   });
 
   it('still completes the whole flow on sample data', async () => {
-    await renderApp();
+    await renderIntake();
     await pressOnTop('cta-continue');
     await giveRequiredConsents();
     await pressOnTop('cta-continue');

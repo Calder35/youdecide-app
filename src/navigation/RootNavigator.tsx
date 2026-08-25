@@ -1,5 +1,6 @@
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
+import { ChatScreen } from '../screens/ChatScreen';
 import {
   AccountConsentScreen,
   AiPlanScreen,
@@ -19,14 +20,22 @@ import type { RootStackParamList } from './types';
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 /**
- * One stack for the whole app. The seller flow is linear, so a stack keeps the
- * back behavior obvious; `GetHuman` is pushed on top from anywhere rather than
- * living in the flow.
+ * One stack for the whole app.
+ *
+ * `Chat` is the front door. The intake screens below it are still registered
+ * and still work — they are simply no longer what a person meets first.
+ *
+ * `initialRouteName` is overridable so tests can exercise the intake flow
+ * directly without walking a conversation to get to it.
  */
-export function RootNavigator() {
+export function RootNavigator({
+  initialRouteName = ROUTES.Chat,
+}: {
+  initialRouteName?: keyof RootStackParamList;
+} = {}) {
   return (
     <Stack.Navigator
-      initialRouteName={ROUTES.Welcome}
+      initialRouteName={initialRouteName}
       screenOptions={{
         headerStyle: { backgroundColor: theme.color.surface },
         headerTintColor: theme.color.textPrimary,
@@ -34,6 +43,11 @@ export function RootNavigator() {
         contentStyle: { backgroundColor: theme.color.background },
       }}
     >
+      <Stack.Screen
+        name={ROUTES.Chat}
+        component={ChatScreen}
+        options={{ title: 'You Decide AI' }}
+      />
       <Stack.Screen
         name={ROUTES.Welcome}
         component={WelcomeScreen}

@@ -4,12 +4,15 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import type { ApiClient } from '../api/client';
 import { RootNavigator } from '../navigation/RootNavigator';
+import type { RootStackParamList } from '../navigation/types';
+import { ChatSessionProvider } from '../state/ChatSession';
 import { SellerSessionProvider } from '../state/SellerSession';
+import { VoiceSessionProvider, type VoiceDependencies } from '../state/VoiceSession';
 
 /**
- * Renders the real app — real navigator, real session store — so tests exercise
- * what a person actually uses. `@testing-library/react-native` v14 is async, so
- * every helper here returns a promise.
+ * Renders the real app — real navigator, real stores — so tests exercise what a
+ * person actually uses. `@testing-library/react-native` v14 is async, so every
+ * helper here returns a promise.
  */
 
 const initialMetrics = {
@@ -17,20 +20,41 @@ const initialMetrics = {
   insets: { top: 47, left: 0, right: 0, bottom: 34 },
 };
 
-/**
- * `client` is optional: with none, the app runs in its default OFFLINE mode and
- * touches no network — which is what most tests want, and what CI must have.
- */
-export async function renderApp(client?: ApiClient) {
+export type RenderOptions = {
+  /** With none, the app runs OFFLINE and touches no network. CI needs this. */
+  client?: ApiClient;
+  /**
+   * Defaults to the app's real front door (`Chat`). The intake tests start at
+   * `Welcome` so they can exercise that flow without walking a conversation.
+   */
+  initialRouteName?: keyof RootStackParamList;
+  /** Fake mic/player/provider. Without these, voice reports unavailable. */
+  voice?: VoiceDependencies;
+};
+
+export async function renderApp(options: RenderOptions = {}) {
   await render(
     <SafeAreaProvider initialMetrics={initialMetrics}>
-      <SellerSessionProvider client={client}>
-        <NavigationContainer>
-          <RootNavigator />
-        </NavigationContainer>
+      <SellerSessionProvider client={options.client}>
+        {/* No typing delay: tests should not wait on a simulated pause. */}
+        <ChatSessionProvider client={options.client} thinkingDelayMs={0}>
+          <VoiceSessionProvider
+            client={options.client}
+            dependencies={{ log: () => undefined, ...options.voice }}
+          >
+            <NavigationContainer>
+              <RootNavigator initialRouteName={options.initialRouteName} />
+            </NavigationContainer>
+          </VoiceSessionProvider>
+        </ChatSessionProvider>
       </SellerSessionProvider>
     </SafeAreaProvider>,
   );
+}
+
+/** Starts on the intake flow rather than the conversation. */
+export async function renderIntake(options: Omit<RenderOptions, 'initialRouteName'> = {}) {
+  await renderApp({ ...options, initialRouteName: 'Welcome' });
 }
 
 /**
@@ -50,8 +74,14 @@ export async function typeInto(testID: string, text: string) {
   await fireEvent.changeText(onTop(testID), text);
 }
 
-/** Give the two required consents — the only gate in the flow. */
+/** Give the two required consents — the only gate in the intake flow. */
 export async function giveRequiredConsents() {
   await pressOnTop('consent-terms');
   await pressOnTop('consent-dataUse');
+}
+
+/** Say something to You Decide AI and wait for the reply to land. */
+export async function sayToAi(message: string) {
+  await typeInto('chat-input', message);
+  await pressOnTop('chat-send');
 }

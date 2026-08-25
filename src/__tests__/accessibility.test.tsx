@@ -1,7 +1,7 @@
 import { screen } from '@testing-library/react-native';
 import type { TestInstance } from 'test-renderer';
 
-import { giveRequiredConsents, pressOnTop, renderApp } from '../test-utils/renderApp';
+import { giveRequiredConsents, pressOnTop, renderIntake } from '../test-utils/renderApp';
 
 /**
  * Accessibility, swept across the whole app.
@@ -59,7 +59,7 @@ function flatten(style: unknown, into: Record<string, unknown> = {}): Record<str
 
 /** Walk to the screen a seller reaches after finishing intake. */
 async function walkTheWholeFlow() {
-  await renderApp();
+  await renderIntake();
   await pressOnTop('cta-continue');
   await giveRequiredConsents();
   await pressOnTop('cta-continue');
@@ -104,20 +104,22 @@ describe('accessibility across the app', () => {
     expect(optedOut.map(describeNode)).toEqual([]);
   });
 
-  it('names the persistent human handoff on every screen, with what it does', async () => {
-    await renderApp();
-    const bars = screen
-      .getAllByLabelText('Get a human')
-      .map((node) => (node.props as Record<string, unknown>).accessibilityHint);
+  it('offers no standing "talk to a human" control anywhere in the intake', async () => {
+    await walkTheWholeFlow();
 
-    expect(bars.length).toBeGreaterThan(0);
-    for (const hint of bars) {
-      expect(String(hint)).toMatch(/what information is shared/i);
-    }
+    // The persistent bar is gone by design — see EscalationOffer. A person
+    // reaches one only when the AI decides one is needed.
+    const standingExits = interactiveNodes().filter((node) =>
+      /get a human|talk to a (human|person)|speak to (someone|a human)/i.test(
+        accessibleName(node),
+      ),
+    );
+
+    expect(standingExits.map(describeNode)).toEqual([]);
   });
 
   it('marks the handoff and privacy screens with headers', async () => {
-    await renderApp();
+    await renderIntake();
     await pressOnTop('link-privacy');
     // The screen title is a header, so a screen reader can jump to it.
     const headers = screen.getAllByRole('header');

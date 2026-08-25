@@ -5,7 +5,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { SELLER_FLOW_LENGTH, stepNumber, type RouteName } from '../navigation/routes';
 import { theme } from '../theme';
 import { AppText } from './AppText';
-import { GetHumanBar } from './GetHumanBar';
 
 type Props = {
   route: RouteName;
@@ -18,12 +17,15 @@ type Props = {
 };
 
 /**
- * Every screen renders through this. It owns three things a screen must never
- * be able to opt out of:
- *   1. the persistent "get a human" bar,
- *   2. the flow position ("Step 2 of 7"), so the seller always knows where they
- *      are in the intake,
- *   3. safe-area + scroll behavior, so long copy is reachable on small phones.
+ * The scaffold for the intake screens that follow the conversation.
+ *
+ * It owns the flow position ("Step 2 of 7") and safe-area + scroll behaviour.
+ *
+ * It NO LONGER renders a persistent "get a human" bar. That bar was a
+ * non-negotiable in the first four chunks and has been deliberately removed:
+ * the AI is the experience, and a standing escape button framed it as a
+ * waiting room in front of a person. A human now enters only when the AI
+ * decides one is needed — see `EscalationOffer`.
  */
 export function ScreenScaffold({ route, title, intro, children, actions }: Props) {
   const step = stepNumber(route);
@@ -51,7 +53,6 @@ export function ScreenScaffold({ route, title, intro, children, actions }: Props
         </View>
       </ScrollView>
       {actions !== undefined && <View style={styles.actions}>{actions}</View>}
-      <GetHumanBar />
     </SafeAreaView>
   );
 }

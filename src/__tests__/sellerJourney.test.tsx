@@ -1,11 +1,10 @@
 import { screen } from '@testing-library/react-native';
 
-import { GET_HUMAN_TEST_ID } from '../components/GetHumanBar';
 import {
   giveRequiredConsents,
   onTop,
   pressOnTop,
-  renderApp,
+  renderIntake,
   typeInto,
 } from '../test-utils/renderApp';
 
@@ -16,7 +15,7 @@ import {
  */
 describe('scripted seller journey', () => {
   it('completes intake and hands off to a human with the answers intact', async () => {
-    await renderApp();
+    await renderIntake();
 
     // Welcome
     expect(screen.getByText('Sell your Nevada home for a 1% listing fee')).toBeOnTheScreen();
@@ -75,18 +74,25 @@ describe('scripted seller journey', () => {
     expect(onTop('status-request')).toBeOnTheScreen();
   });
 
-  it('lets a seller ask for a human from the very first screen', async () => {
-    await renderApp();
-    await pressOnTop(GET_HUMAN_TEST_ID);
-    expect(screen.getByText('Talk to a licensed Nevada agent')).toBeOnTheScreen();
-    // Nothing entered yet — the disclosure says so instead of showing blanks.
-    expect(screen.getAllByText(/haven't entered one/).length).toBeGreaterThan(0);
+  it('says plainly what is missing when the handoff has little to send', async () => {
+    // Reached from the plan rather than from a standing button: the persistent
+    // "get a human" bar is gone, and a person comes in on the AI's initiative.
+    await renderIntake();
+    await pressOnTop('cta-continue');
+    await giveRequiredConsents();
+    await pressOnTop('cta-continue');
+    await pressOnTop('cta-continue');
+    await pressOnTop('cta-continue');
+    await pressOnTop('cta-continue');
     await pressOnTop('cta-request-human');
-    expect(onTop('status-request')).toBeOnTheScreen();
+
+    expect(screen.getByText('Talk to a licensed Nevada agent')).toBeOnTheScreen();
+    // Nothing entered — the disclosure says so instead of showing blanks.
+    expect(screen.getAllByText(/haven't entered one/).length).toBeGreaterThan(0);
   });
 
   it('shows no open request until the seller actually sends one', async () => {
-    await renderApp();
+    await renderIntake();
     await pressOnTop('cta-continue');
     await giveRequiredConsents();
     await pressOnTop('cta-continue');
@@ -100,7 +106,7 @@ describe('scripted seller journey', () => {
 
 describe('the 1% explanation', () => {
   it('recalculates when the seller changes the price', async () => {
-    await renderApp();
+    await renderIntake();
     await pressOnTop('cta-see-fee');
     expect(onTop('modeled-price')).toHaveTextContent('$450,000');
     expect(onTop('listing-fee')).toHaveTextContent('$4,500');
@@ -111,7 +117,7 @@ describe('the 1% explanation', () => {
   });
 
   it("lets a seller offer nothing to a buyer's agent", async () => {
-    await renderApp();
+    await renderIntake();
     await pressOnTop('cta-see-fee');
     await pressOnTop('buyer-rate-0');
     expect(onTop('buyer-agent-fee')).toHaveTextContent('$0');
