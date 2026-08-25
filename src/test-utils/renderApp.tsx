@@ -30,6 +30,13 @@ export type RenderOptions = {
   initialRouteName?: keyof RootStackParamList;
   /** Fake mic/player/provider. Without these, voice reports unavailable. */
   voice?: VoiceDependencies;
+  /**
+   * Whether spoken turns stream. Defaults to the build flag (on).
+   *
+   * Tests of the plain `/v1/chat` path set this false and say so, because with
+   * streaming on a spoken turn does not go through that endpoint at all.
+   */
+  streaming?: boolean;
 };
 
 export async function renderApp(options: RenderOptions = {}) {
@@ -37,7 +44,11 @@ export async function renderApp(options: RenderOptions = {}) {
     <SafeAreaProvider initialMetrics={initialMetrics}>
       <SellerSessionProvider client={options.client}>
         {/* No typing delay: tests should not wait on a simulated pause. */}
-        <ChatSessionProvider client={options.client} thinkingDelayMs={0}>
+        <ChatSessionProvider
+          client={options.client}
+          thinkingDelayMs={0}
+          streaming={options.streaming}
+        >
           <VoiceSessionProvider
             client={options.client}
             dependencies={{ log: () => undefined, ...options.voice }}

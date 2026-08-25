@@ -294,6 +294,12 @@ describe('the timer never shows nonsense', () => {
  * The spoken turn declares itself to the backend, and the typed one does not.
  */
 describe('voice turns ask for a spoken-style reply', () => {
+  /**
+   * These cover the NON-STREAMING path — `streaming: false` — because with
+   * streaming on a spoken turn does not touch `/v1/chat` at all; it goes to
+   * `/v1/chat/stream`. The streamed equivalent is in streamedVoiceTurn.test.tsx.
+   * Both paths ship, so both stay tested.
+   */
   /** A backend that records exactly what the app sent. */
   function recordingBackend() {
     const bodies: Record<string, unknown>[] = [];
@@ -319,7 +325,7 @@ describe('voice turns ask for a spoken-style reply', () => {
   it('sends mode: "voice" when the person spoke', async () => {
     const backend = recordingBackend();
     const voice = fakeVoice();
-    await renderApp({ client: backend.client, voice: voice.dependencies });
+    await renderApp({ client: backend.client, voice: voice.dependencies, streaming: false });
 
     await tapSpeakTap();
 
@@ -342,7 +348,7 @@ describe('voice turns ask for a spoken-style reply', () => {
   it('still shows the reply in the transcript and speaks it', async () => {
     const backend = recordingBackend();
     const voice = fakeVoice();
-    await renderApp({ client: backend.client, voice: voice.dependencies });
+    await renderApp({ client: backend.client, voice: voice.dependencies, streaming: false });
 
     await tapSpeakTap();
 

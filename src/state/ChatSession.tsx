@@ -10,6 +10,7 @@ import {
 
 import { ApiClient } from '../api/client';
 import { sendChatMessage, type ChatMode, type EscalationKind } from '../api/chat';
+import { VOICE_STREAMING_ENABLED, streamChatMessage } from '../api/chatStream';
 import {
   OPENING_MESSAGE,
   newStubConversation,
@@ -51,6 +52,26 @@ export type ChatSessionValue = {
    * of sentences rather than paragraphs. Typed turns pass nothing.
    */
   send: (message: string, options?: { mode?: ChatMode }) => Promise<string | null>;
+  /**
+   * True when a turn can be streamed sentence by sentence.
+   *
+   * False until the streaming endpoint is confirmed, and false with no backend.
+   * Callers check this rather than catching a failure, because a spoken turn
+   * that fails over to the plain endpoint would ask the same question twice.
+   */
+  streamingAvailable: boolean;
+  /**
+   * Sends a turn and reports each sentence AS IT IS WRITTEN.
+   *
+   * Only voice uses this. `onSentence` fires while the rest of the reply is
+   * still being generated, which is what lets speech start early; the
+   * transcript still gains one AI turn at the end, with the whole reply and its
+   * escalation, exactly as a non-streamed turn does.
+   */
+  sendStreaming: (
+    message: string,
+    options: { mode?: ChatMode; onSentence: (sentence: string) => void },
+  ) => Promise<string | null>;
   retry: () => Promise<string | null>;
   /** The highest escalation the conversation has reached, if any. */
   escalation: EscalationKind;
@@ -75,10 +96,19 @@ export function ChatSessionProvider({
   client,
   /** Tests set this to 0 so they are not waiting on a fake typing delay. */
   thinkingDelayMs = STUB_THINKING_MS,
+  /**
+   * Whether spoken turns stream. Defaults to the build flag.
+   *
+   * A prop as well as a flag because both paths are real and both have to stay
+   * tested: streaming is what ships, and the plain `/v1/chat` path is what a
+   * turn falls back to if the stream is ever switched off.
+   */
+  streaming = VOICE_STREAMING_ENABLED,
 }: {
   children: ReactNode;
   client?: ApiClient;
   thinkingDelayMs?: number;
+  streaming?: boolean;
 }) {
   const [api] = useState(() => client ?? new ApiClient());
 
@@ -166,6 +196,73 @@ export function ChatSessionProvider({
     [deliver],
   );
 
+  const streamingAvailable = api.isConnected && streaming;
+
+  const sendStreaming = useCallback(
+    async (
+      message: string,
+      options: { mode?: ChatMode; onSentence: (sentence: string) => void },
+    ): Promise<string | null> => {
+      const trimmed = message.trim();
+      if (trimmed.length === 0) return null;
+
+      lastSendRef.current = { message: trimmed, mode: options.mode };
+      setTurns((current) => [...current, { id: nextId('you'), role: 'you', text: trimmed }]);
+      setThinking(true);
+      setError(null);
+
+      try {
+        const { result } = streamChatMessage(
+          api,
+          { conversationId: conversationIdRef.current, message: trimmed, mode: options.mode },
+          { onSentence: options.onSentence },
+        );
+        const reply = await result;
+        conversationIdRef.current = reply.conversationId || conversationIdRef.current;
+
+        // Same judgement as the non-streamed path: a blank reply is a real
+        // thing this backend returns, and a blank bubble is worse than saying so.
+        if (reply.reply.trim().length === 0) {
+          setError(
+            'That reply came back empty — it is a problem on our side, not something you did. Try sending it again.',
+          );
+          return null;
+        }
+
+        // ONE turn at the end, carrying the whole reply. The sentences went to
+        // the speaker as they arrived; the transcript is not a teleprompter,
+        // and painting it in line by line is a separate design decision.
+        setTurns((current) => [
+          ...current,
+          {
+            id: nextId('ai'),
+            role: 'ai',
+            text: reply.reply,
+            escalate: reply.escalate,
+            escalationNote: reply.escalationNote,
+          },
+        ]);
+
+        // The reply stopped part-way through, after some of it had already been
+        // said out loud. What there is stays — on screen and spoken — and the
+        // conversation carries on; this only explains the missing end of it.
+        if (reply.cutShort !== null) {
+          setError(
+            'That answer stopped part-way through — the part above is what came back. Ask again and I will pick it up.',
+          );
+        }
+
+        return reply.reply;
+      } catch (thrown) {
+        setError(toApiError(thrown).sellerMessage);
+        return null;
+      } finally {
+        setThinking(false);
+      }
+    },
+    [api],
+  );
+
   const retry = useCallback(async (): Promise<string | null> => {
     const last = lastSendRef.current;
     if (last === null) return null;
@@ -195,12 +292,14 @@ export function ChatSessionProvider({
       thinking,
       error,
       send,
+      streamingAvailable,
+      sendStreaming,
       retry,
       escalation,
       escalationNote,
       isLive: api.isConnected,
     };
-  }, [turns, thinking, error, send, retry, api]);
+  }, [turns, thinking, error, send, streamingAvailable, sendStreaming, retry, api]);
 
   return <ChatSessionContext.Provider value={value}>{children}</ChatSessionContext.Provider>;
 }
